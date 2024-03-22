@@ -1,3 +1,6 @@
+#![feature(int_roundings)]
+#![feature(array_try_map)]
+
 mod cell_path;
 pub use cell_path::*;
 mod stat_bool;
@@ -6,14 +9,10 @@ mod stat_int;
 pub use stat_int::*;
 mod terrain;
 use either::Either;
+use bevy_math::Vec3;
 pub use terrain::*;
 
-use serde::{Deserialize, Serialize};
 use arbitrary_int::*;
-use godot::builtin::{
-    Vector3, Aabb, meta::{ToGodot, GodotConvert, FromGodot, ConvertError},
-    PackedByteArray
-};
 use itertools::Itertools;
 use std::{fmt::Debug, mem::take};
 use std::sync::Arc;
@@ -373,7 +372,7 @@ impl<D: Data> Cell<D> {
     }
 
     pub fn sample(
-        &self, mut coords: Vector3, max_depth: u32
+        &self, mut coords: Vec3, max_depth: u32
     ) -> Option<(CellPath, &Cell<D>)> {
         let mut curr_path = CellPath::new();
 
@@ -411,7 +410,7 @@ impl<D: Data> Cell<D> {
     }
 
     pub fn sample_mut(
-        &mut self, mut coords: Vector3, max_depth: u32
+        &mut self, mut coords: Vec3, max_depth: u32
     ) -> Option<(CellPath, &mut Cell<D>)> {
         let mut curr_path = CellPath::new();
 
@@ -541,32 +540,6 @@ impl<'a, D: Data> IntoIterator for &'a Cell<D> {
 impl<D: Data> From<D> for Cell<D> {
     fn from(data: D) -> Self {
         Cell::Leaf(LeafCell { data })
-    }
-}
-
-impl<D> GodotConvert for Cell<D>
-    where D: Data
-{
-    type Via = PackedByteArray;
-}
-
-impl<D> FromGodot for Cell<D>
-    where D: Data,
-          Cell<D>: for<'a> Deserialize<'a>,
-{
-    fn try_from_godot(via: Self::Via) -> Result<Self, ConvertError> {
-        bincode::deserialize(via.as_slice())
-            .map_err(|_| ConvertError::new())
-    }
-}
-
-impl<D> ToGodot for Cell<D>
-    where D: Data,
-          Cell<D>: Serialize,
-{
-    fn to_godot(&self) -> Self::Via {
-        let rs = bincode::serialize(self).expect("serialization error");
-        From::from(rs.as_slice())
     }
 }
 

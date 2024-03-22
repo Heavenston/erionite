@@ -8,5 +8,5 @@ lto = "fat"
 resolver = "2"
 
 members = [
-  "origin",
+  "svo",
 ]

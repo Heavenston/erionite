@@ -1,10 +1,7 @@
-use either::Either::{ self, Left, Right };
+use either::Either::{ Left, Right };
 use itertools::Itertools;
 use num_traits::int::PrimInt;
-use num_traits::identities::Zero;
-use std::{fmt::Debug, ops::Add};
-
-use crate::svo;
+use std::fmt::Debug;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InnerStatInt<T> {
@@ -13,26 +10,26 @@ pub struct InnerStatInt<T> {
     pub average: T,
 }
 
-impl<T: Default + Debug + PrimInt> svo::InternalData for InnerStatInt<T> {
+impl<T: Default + Debug + PrimInt> crate::InternalData for InnerStatInt<T> {
     
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StatInt<T: Default + Debug + PrimInt>(pub T);
 
-impl<T: Default + Debug + PrimInt> svo::Data for StatInt<T> {
+impl<T: Default + Debug + PrimInt> crate::Data for StatInt<T> {
     type Internal = InnerStatInt<T>;
 }
 
-impl<T: Default + Debug + PrimInt> From<StatInt<T>> for svo::LeafCell<StatInt<T>> {
+impl<T: Default + Debug + PrimInt> From<StatInt<T>> for crate::LeafCell<StatInt<T>> {
     fn from(value: StatInt<T>) -> Self {
-        svo::LeafCell {
+        crate::LeafCell {
             data: value
         }
     }
 }
 
-impl<T: Default + Debug + PrimInt> svo::MergeableData for StatInt<T> {
+impl<T: Default + Debug + PrimInt> crate::MergeableData for StatInt<T> {
     fn can_merge(
         _this: &InnerStatInt<T>,
         children: [&Self; 8]
@@ -52,9 +49,9 @@ impl<T: Default + Debug + PrimInt> svo::MergeableData for StatInt<T> {
     }
 }
 
-impl<T: Default + Debug + PrimInt> svo::AggregateData for StatInt<T> {
+impl<T: Default + Debug + PrimInt> crate::AggregateData for StatInt<T> {
     fn aggregate<'a>(
-        d: [svo::EitherDataRef<Self>; 8]
+        d: [crate::EitherDataRef<Self>; 8]
     ) -> InnerStatInt<T> {
         InnerStatInt {
             min: d.into_iter().map(|x| match x {

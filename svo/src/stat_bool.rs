@@ -1,7 +1,5 @@
-use either::Either::{ self, Left, Right };
+use either::Either::{ Left, Right };
 use itertools::Itertools;
-
-use crate::svo;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InnerStatBool {
@@ -9,26 +7,26 @@ pub struct InnerStatBool {
     pub all: bool,
 }
 
-impl svo::InternalData for InnerStatBool {
+impl crate::InternalData for InnerStatBool {
     
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StatBool(pub bool);
 
-impl svo::Data for StatBool {
+impl crate::Data for StatBool {
     type Internal = InnerStatBool;
 }
 
-impl From<StatBool> for svo::LeafCell<StatBool> {
+impl From<StatBool> for crate::LeafCell<StatBool> {
     fn from(value: StatBool) -> Self {
-        svo::LeafCell {
+        crate::LeafCell {
             data: value
         }
     }
 }
 
-impl svo::MergeableData for StatBool {
+impl crate::MergeableData for StatBool {
     fn can_merge(
         _this: &InnerStatBool,
         children: [&Self; 8]
@@ -48,9 +46,9 @@ impl svo::MergeableData for StatBool {
     }
 }
 
-impl svo::AggregateData for StatBool {
+impl crate::AggregateData for StatBool {
     fn aggregate<'a>(
-        d: [svo::EitherDataRef<Self>; 8]
+        d: [crate::EitherDataRef<Self>; 8]
     ) -> InnerStatBool {
         InnerStatBool {
             any: d.iter().any(|x| match x {
