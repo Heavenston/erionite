@@ -10,4 +10,5 @@ resolver = "2"
 members = [
   "svo",
   "erionite",
+  "utils",
 ]

@@ -1,5 +1,6 @@
 use arbitrary_int::*;
-use bevy_math::{ vec3, Vec3, bounding::Aabb3d };
+use bevy_math::DVec3;
+use utils::{ DAabb, AsBVecExt };
 
 type CellPathInner = u128;
 
@@ -103,20 +104,13 @@ impl CellPath {
         std::iter::from_fn(move || { self = self.parent()?; Some(self) })
     }
 
-    pub fn get_aabb(self, mut root: Aabb3d) -> Aabb3d {
+    pub fn get_aabb(self, mut root: DAabb) -> DAabb {
         for x in self {
-            let x = x.value();
-            let bits = [0b001, 0b010, 0b100];
-            let mids = root.min + (root.max - root.min) * 0.5;
-
-            let nmin = root.min.as_mut();
-            let nmax = root.max.as_mut();
-            for i in 0..3 {
-                if x & bits[i] == 0
-                { nmax[i] = mids[i]; }
-                else
-                { nmin[i] = mids[i]; }
-            }
+            root.size /= 2.;
+            root.position = DVec3::select(
+                x.as_bvec(),
+                root.position + root.size, root.position
+            );
         }
         root
     }
@@ -139,6 +133,7 @@ impl CellPath {
                 if (diff / 3) >= self.len().into() {
                     return None;
                 }
+                // HAHAHAHAHA
                 if (d == 1 && (new.0 >> diff) & bit == 0) ||
                     (d == -1 && (new.0 >> diff) & bit != 0) {
                     if d == 1 {
@@ -188,6 +183,7 @@ impl CellPath {
         ]
     }
 
+    /// Returns an iterator over all paths possible with the given depth
     pub fn all_iter(depth: usize) -> impl Iterator<Item = Self> {
         let sections = depth * 3;
         (0..(1 << sections)).map(move |i| Self(i | (1 << sections)))
@@ -265,16 +261,7 @@ impl Iterator for CellPath {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Can be removed once Aabb3d implements ParialEq
-    #[derive(Debug, Clone)]
-    pub struct EqAabb(Aabb3d);
-    impl PartialEq for EqAabb {
-        fn eq(&self, other: &Self) -> bool {
-            self.0.min.eq(&other.0.min) &&
-            self.0.max.eq(&other.0.max)
-        }
-    }
+    use bevy_math::dvec3;
 
     #[test]
     fn test_neighbor() {
@@ -332,48 +319,48 @@ mod tests {
 
     #[test]
     fn test_aabb() {
-        let aabb = Aabb3d {
-            min: Vec3::splat(0.),
-            max: Vec3::splat(24.),
-        };
+        let aabb = DAabb::from_minmax(
+            DVec3::splat(0.),
+            DVec3::splat(24.),
+        );
 
-        assert_eq!(EqAabb(CellPath::new().get_aabb(aabb)), EqAabb(aabb));
+        assert_eq!(CellPath::new().get_aabb(aabb), aabb);
 
         assert_eq!(
-            EqAabb(CellPath(0b1_000).get_aabb(aabb)),
-            EqAabb(Aabb3d { min: Vec3::splat(0.), max: Vec3::splat(12.) })
+            CellPath(0b1_000).get_aabb(aabb),
+            DAabb::from_minmax(DVec3::splat(0.), DVec3::splat(12.))
         );
         assert_eq!(
-            EqAabb(CellPath(0b1_000_000).get_aabb(aabb)),
-            EqAabb(Aabb3d { min: Vec3::splat(0.), max: Vec3::splat(6.) })
+            CellPath(0b1_000_000).get_aabb(aabb),
+            DAabb::from_minmax(DVec3::splat(0.), DVec3::splat(6.))
         );
         assert_eq!(
-            EqAabb(CellPath(0b1_000_000_000).get_aabb(aabb)),
-            EqAabb(Aabb3d { min: Vec3::splat(0.), max: Vec3::splat(3.) })
+            CellPath(0b1_000_000_000).get_aabb(aabb),
+            DAabb::from_minmax(DVec3::splat(0.), DVec3::splat(3.))
         );
         assert_eq!(
-            EqAabb(CellPath(0b1_001).get_aabb(aabb)),
-            EqAabb(Aabb3d { min: vec3(12., 0., 0.), max: vec3(24., 12., 12.) })
+            CellPath(0b1_001).get_aabb(aabb),
+            DAabb::from_minmax(dvec3(12., 0., 0.), dvec3(24., 12., 12.))
         );
         assert_eq!(
-            EqAabb(CellPath(0b1_100).get_aabb(aabb)),
-            EqAabb(Aabb3d { min: vec3(0., 0., 12.), max: vec3(12., 12., 24.) })
+            CellPath(0b1_100).get_aabb(aabb),
+            DAabb::from_minmax(dvec3(0., 0., 12.), dvec3(12., 12., 24.))
         );
         assert_eq!(
-            EqAabb(CellPath(0b1_010).get_aabb(aabb)),
-            EqAabb(Aabb3d { min: vec3(0., 12., 0.), max: vec3(12., 24., 12.) })
+            CellPath(0b1_010).get_aabb(aabb),
+            DAabb::from_minmax(dvec3(0., 12., 0.), dvec3(12., 24., 12.))
         );
         assert_eq!(
-            EqAabb(CellPath(0b1_010_000).get_aabb(aabb)),
-            EqAabb(Aabb3d { min: vec3(0., 12., 0.), max: vec3(6., 18., 6.) })
+            CellPath(0b1_010_000).get_aabb(aabb),
+            DAabb::from_minmax(dvec3(0., 12., 0.), dvec3(6., 18., 6.))
         );
         assert_eq!(
-            EqAabb(CellPath(0b1_010_111).get_aabb(aabb)),
-            EqAabb(Aabb3d { min: vec3(6., 18., 6.), max: vec3(12., 24., 12.) })
+            CellPath(0b1_010_111).get_aabb(aabb),
+            DAabb::from_minmax(dvec3(6., 18., 6.), dvec3(12., 24., 12.))
         );
         assert_eq!(
-            EqAabb(CellPath(0b1_000_111).get_aabb(aabb)),
-            EqAabb(Aabb3d { min: vec3(6., 6., 6.), max: vec3(12., 12., 12.) })
+            CellPath(0b1_000_111).get_aabb(aabb),
+            DAabb::from_minmax(dvec3(6., 6., 6.), dvec3(12., 12., 12.))
         );
     }
 }

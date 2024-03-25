@@ -90,7 +90,7 @@ impl AggregateData for TerrainCellData {
 
 impl MergeableData for TerrainCellData {
     fn can_merge(
-        this: &TerrainCellData,
+        _this: &TerrainCellData,
         d: [&Self; 8]
     ) -> bool {
         Self::density_delta(d) <= 0.01

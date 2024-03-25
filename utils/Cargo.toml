@@ -1,0 +1,8 @@
+[package]
+name = "utils"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arbitrary-int = "1.2.7"
+bevy_math = "0.13.1"

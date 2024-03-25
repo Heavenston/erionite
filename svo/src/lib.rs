@@ -1,6 +1,7 @@
 #![feature(int_roundings)]
 #![feature(array_try_map)]
 
+pub mod sdf;
 mod cell_path;
 pub use cell_path::*;
 mod stat_bool;
@@ -9,13 +10,14 @@ mod stat_int;
 pub use stat_int::*;
 mod terrain;
 use either::Either;
-use bevy_math::Vec3;
 pub use terrain::*;
+
+use std::{fmt::Debug, mem::take};
+use std::sync::Arc;
 
 use arbitrary_int::*;
 use itertools::Itertools;
-use std::{fmt::Debug, mem::take};
-use std::sync::Arc;
+use bevy_math::DVec3;
 
 pub trait InternalData: Debug + Sized + Default + Clone {
 }
@@ -372,7 +374,7 @@ impl<D: Data> Cell<D> {
     }
 
     pub fn sample(
-        &self, mut coords: Vec3, max_depth: u32
+        &self, mut coords: DVec3, max_depth: u32
     ) -> Option<(CellPath, &Cell<D>)> {
         let mut curr_path = CellPath::new();
 
@@ -410,7 +412,7 @@ impl<D: Data> Cell<D> {
     }
 
     pub fn sample_mut(
-        &mut self, mut coords: Vec3, max_depth: u32
+        &mut self, mut coords: DVec3, max_depth: u32
     ) -> Option<(CellPath, &mut Cell<D>)> {
         let mut curr_path = CellPath::new();
 

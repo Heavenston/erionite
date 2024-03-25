@@ -93,11 +93,6 @@ fn camera(
     mut transforms: Query<&mut Transform>,
 
     mut camera: ResMut<Cam>,
-    time: Res<Time>,
-
-    kb_input: Res<ButtonInput<KeyCode>>,
-    mouse_input: Res<ButtonInput<MouseButton>>,
-    mouse_wheel_input: Res<ButtonInput<MouseButton>>,
 
     mut mouse_move_events: EventReader<MouseMotion>,
     mut mouse_wheel_events: EventReader<MouseWheel>,
