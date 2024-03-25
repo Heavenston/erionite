@@ -27,7 +27,7 @@ impl FromWorld for Cam {
         Self {
             entity: None,
             angle: Vec2::ZERO,
-            distance: 5.,
+            distance: 20.,
         }
     }
 }
@@ -70,20 +70,31 @@ fn setup(
 }
 
 fn camera_capture(
+    mut camera: ResMut<Cam>,
+
     kb_input: Res<ButtonInput<KeyCode>>,
     mouse_input: Res<ButtonInput<MouseButton>>,
     mut q_windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     let mut w = q_windows.single_mut();
 
-    if mouse_input.just_pressed(MouseButton::Left) {
-        w.cursor.grab_mode = CursorGrabMode::Locked;
-        w.cursor.visible = false;
+    let toggle = mouse_input.just_pressed(MouseButton::Left)
+        || kb_input.just_pressed(KeyCode::Escape);
+
+    if toggle {
+        if w.cursor.visible {
+            w.cursor.grab_mode = CursorGrabMode::Locked;
+            w.cursor.visible = false;
+        }
+        else {
+            w.cursor.grab_mode = CursorGrabMode::None;
+            w.cursor.visible = true;
+        }
     }
 
-    if kb_input.just_pressed(KeyCode::Escape) {
-        w.cursor.grab_mode = CursorGrabMode::None;
-        w.cursor.visible = true;
+    if kb_input.just_pressed(KeyCode::KeyR) {
+        camera.distance = 20.;
+        camera.angle = Vec2::ZERO;
     }
 }
 
@@ -112,7 +123,6 @@ fn camera(
                 camera.distance /= 1.25;
             }
         }
-        camera.distance = camera.distance.clamp(2., 15.);
 
         for me in mouse_move_events.read() {
             camera.angle.y -= me.delta.y / 120.;
