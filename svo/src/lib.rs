@@ -1,7 +1,8 @@
 #![feature(int_roundings)]
 #![feature(array_try_map)]
 
-pub mod sdf;
+mod sdf;
+pub use sdf::*;
 mod cell_path;
 pub use cell_path::*;
 mod stat_bool;
@@ -9,12 +10,12 @@ pub use stat_bool::*;
 mod stat_int;
 pub use stat_int::*;
 mod terrain;
-use either::Either;
 pub use terrain::*;
 
 use std::{fmt::Debug, mem::take};
 use std::sync::Arc;
 
+use either::Either;
 use arbitrary_int::*;
 use itertools::Itertools;
 use bevy_math::DVec3;
