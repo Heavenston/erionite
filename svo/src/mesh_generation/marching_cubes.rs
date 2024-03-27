@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use bevy_math::{bounding::Aabb3d, Vec3};
+use bevy_math::{bounding::Aabb3d, Vec3, Vec4};
 use bevy_render::{color::Color, mesh::{self, Mesh}, render_asset::RenderAssetUsages};
 use ordered_float::OrderedFloat;
 use utils::AabbExt as _;
@@ -321,18 +321,29 @@ const TRIANGULATIONS: [[i8; 15]; 256] = [
 pub struct Out {
     pub indexed: bool,
 
-    pub indices: Vec<i32>,
+    pub indices: Vec<u32>,
     pub vertices: Vec<Vec3>,
     pub normals: Vec<Vec3>,
-    pub colors: Vec<Vec3>,
+    pub colors: Vec<Vec4>,
 }
 
 impl Out {
-    pub fn into_mesh(self) -> Mesh {
-        Mesh::new(mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::all())
-            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.vertices)
-            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, self.normals)
-            .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, self.colors)
+    pub fn into_mesh(&mut self) -> Mesh {
+        let vertices = std::mem::take(&mut self.vertices);
+        let normals = std::mem::take(&mut self.normals);
+        let colors = std::mem::take(&mut self.colors);
+        let indices = std::mem::take(&mut self.indices);
+
+        let mut m = Mesh::new(mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::all())
+            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
+            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+            .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+
+        if self.indexed {
+            m = m.with_inserted_indices(mesh::Indices::U32(indices))
+        }
+
+        m
     }
 }
 
@@ -376,7 +387,7 @@ impl<'a> State<'a> {
             let entry = self.indices.entry(key).or_insert_with(|| {
                 let idx = self.out.vertices.len();
                 self.out.normals.push(self.normal);
-                self.out.colors.push(self.color.rgb_to_vec3());
+                self.out.colors.push(self.color.rgba_to_vec4());
                 self.out.vertices.push(pos);
                 Index {
                     index: idx,
@@ -392,7 +403,7 @@ impl<'a> State<'a> {
         }
         else {
             self.out.normals.push(self.normal);
-            self.out.colors.push(self.color.rgb_to_vec3());
+            self.out.colors.push(self.color.rgba_to_vec4());
             self.out.vertices.push(pos);
         }
     }
@@ -443,10 +454,10 @@ fn kernel(
 
             state.set_normal(normal);
 
-            state.set_color(mat[1]);
-            state.add_vertex(arr[1]);
             state.set_color(mat[0]);
             state.add_vertex(arr[0]);
+            state.set_color(mat[1]);
+            state.add_vertex(arr[1]);
             state.set_color(mat[2]);
             state.add_vertex(arr[2]);
         });
