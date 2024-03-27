@@ -328,6 +328,13 @@ pub struct Out {
 }
 
 impl Out {
+    pub fn new(indexed: bool) -> Self {
+        Self {
+            indexed,
+            ..Default::default()
+        }
+    }
+
     pub fn into_mesh(&mut self) -> Mesh {
         let vertices = std::mem::take(&mut self.vertices);
         let normals = std::mem::take(&mut self.normals);

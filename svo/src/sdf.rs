@@ -1,4 +1,5 @@
 use bevy_math::DVec3;
+use rayon::prelude::*;
 use utils::DAabb;
 
 use crate as svo;
@@ -66,7 +67,7 @@ fn svo_from_sdf_inner<F>(
 
     if should_split {
         let se = aabb.size / 2.;
-        let children = (0..8).map(move |ci| {
+        let children = (0..8).into_par_iter().map(move |ci| {
             let corner = CORNERS[ci];
             let new_origin = aabb.position + corner * se;
             let new_corners = CORNERS.map(|x| x * se + new_origin);

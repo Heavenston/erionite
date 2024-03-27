@@ -2,7 +2,7 @@ mod generator;
 
 use bevy::{input::mouse::{MouseMotion, MouseWheel}, math::{bounding::Aabb3d, DVec3}, prelude::*};
 use generator::Generator;
-use svo::CellPath;
+use svo::{mesh_generation::marching_cubes, CellPath};
 use utils::DAabb;
 use std::f32::consts::*;
 
@@ -29,7 +29,7 @@ pub struct Cam {
 
 impl Cam {
     fn reset_dist(&mut self) {
-        self.distance = 600.;
+        self.distance = 3000.;
     }
 }
 
@@ -49,21 +49,23 @@ impl FromWorld for Cam {
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    // mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     mut camera: ResMut<Cam>,
 ) {
-    let et = 5;
-    let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(300.));
+    let et = 7;
+
+    let radius = 2000.;
+    let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(radius*1.5));
 
     println!("Generating...");
     let svo = generator::PlanetGenerator {
-        radius: 300.,
+        radius,
         seed: 5,
     }.generate_chunk(aabb, CellPath::new(), et);
 
     println!("Generating mesh...");
-    let mut out = svo::mesh_generation::marching_cubes::Out::default();
-    svo::mesh_generation::marching_cubes::run(
+    let mut out = marching_cubes::Out::new(true);
+    marching_cubes::run(
         &mut out, CellPath::new(), &svo, aabb.into(), et
     );
     let mesh = meshes.add(out.into_mesh());
@@ -72,8 +74,20 @@ fn setup(
     let parent = commands.spawn(TransformBundle::default()).id();
     commands.spawn(PbrBundle {
         mesh,
+        material: materials.add(StandardMaterial {
+            base_color: Color::WHITE,
+            ..default()
+        }),
         ..default()
     }).set_parent(parent);
+
+    commands.spawn(DirectionalLightBundle {
+        transform: Transform {
+            rotation: Quat::from_rotation_x(std::f32::consts::PI / 4.),
+            ..default()
+        },
+        ..default()
+    });
     
     // camera
     camera.entity = Some(commands.spawn(Camera3dBundle {
