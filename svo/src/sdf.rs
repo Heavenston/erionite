@@ -93,7 +93,7 @@ fn svo_from_sdf_inner<F>(
 
         svo::LeafCell::new(svo::TerrainCellData {
             kind: sample.material,
-            distance: sample.dist,
+            distance: sample.dist as f32,
         }).into()
     }
 }

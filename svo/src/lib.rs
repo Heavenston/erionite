@@ -1,5 +1,6 @@
 #![feature(int_roundings)]
 #![feature(array_try_map)]
+#![feature(iter_array_chunks)]
 
 mod sdf;
 pub use sdf::*;
@@ -11,10 +12,12 @@ mod stat_int;
 pub use stat_int::*;
 mod terrain;
 pub use terrain::*;
+pub mod mesh_generation;
 
 use std::{fmt::Debug, mem::take};
 use std::sync::Arc;
 
+use utils::{ GlamFloat, Vec3Ext };
 use either::Either;
 use arbitrary_int::*;
 use itertools::Itertools;
@@ -374,14 +377,14 @@ impl<D: Data> Cell<D> {
         self.as_inner_mut().children.iter_mut().map(Arc::make_mut)
     }
 
-    pub fn sample(
-        &self, mut coords: DVec3, max_depth: u32
+    pub fn sample<T: GlamFloat>(
+        &self, mut coords: T::Vec3, max_depth: u32
     ) -> Option<(CellPath, &Cell<D>)> {
         let mut curr_path = CellPath::new();
 
-        if coords.x < 0. || coords.x > 1.
-        || coords.y < 0. || coords.y > 1.
-        || coords.z < 0. || coords.z > 1. {
+        if coords.x() < T::new(0.) || coords.x() > T::new(1.)
+        || coords.y() < T::new(0.) || coords.y() > T::new(1.)
+        || coords.z() < T::new(0.) || coords.z() > T::new(1.) {
             return None;
         }
 
@@ -395,13 +398,13 @@ impl<D: Data> Cell<D> {
                 Cell::Internal(i) => i,
                 Cell::Leaf(_) => return Some((curr_path, curr)),
             };
-            let dd = [&mut coords.x, &mut coords.y, &mut coords.z].map(|x| {
-                if *x <= 0.5 {
-                    *x *= 2.;
+            let dd = coords.array_mut().map(|x| {
+                if *x <= T::new(0.5) {
+                    *x *= T::new(2.);
                     0
                 } else {
-                    *x -= 0.5;
-                    *x *= 2.;
+                    *x -= T::new(0.5);
+                    *x *= T::new(2.);
                     1
                 }
             });

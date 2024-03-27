@@ -39,21 +39,21 @@ impl Into<TerrainCell> for TerrainCellKind {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 pub struct TerrainCellData {
     pub kind: TerrainCellKind,
-    pub distance: f64,
+    pub distance: f32,
 }
 
 impl TerrainCellData {
-    pub fn average_distance(d: [&Self; 8]) -> f64 {
+    pub fn average_distance(d: [&Self; 8]) -> f32 {
         let (count, sum) = d.iter()
-            .fold((0f64, 0f64), |(count, sum), x| (count + 1., sum + x.distance));
+            .fold((0f32, 0f32), |(count, sum), x| (count + 1., sum + x.distance));
         sum / count
     }
 
-    pub fn density_delta(d: [&Self; 8]) -> f64 {
+    pub fn density_delta(d: [&Self; 8]) -> f32 {
         let average = Self::average_distance(d);
         let (count, sum) = d.iter()
             .map(|x| (x.distance - average))
-            .fold((0f64, 0f64), |(count, sum), x| (
+            .fold((0f32, 0f32), |(count, sum), x| (
                 count + 1.,
                 sum + (x - average).powi(2)
             ));

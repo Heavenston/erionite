@@ -3299,6 +3299,7 @@ version = "0.1.0"
 dependencies = [
  "arbitrary-int",
  "bevy_math",
+ "bevy_render",
  "bincode",
  "cached",
  "either",
@@ -3560,6 +3561,7 @@ version = "0.1.0"
 dependencies = [
  "arbitrary-int",
  "bevy_math",
+ "num-traits",
 ]
 
 [[package]]
