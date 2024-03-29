@@ -5,9 +5,9 @@ mod generator;
 mod svo_renderer;
 mod svo_provider;
 
-use bevy::{ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, prelude::*};
+use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, prelude::*};
 use svo_provider::generator_svo_provider;
-use svo_renderer::{SvoRendererBundle, SvoRendererComponent, SvoRendererComponentOptions};
+use svo_renderer::{ChunkComponent, SvoRendererBundle, SvoRendererComponent, SvoRendererComponentOptions};
 use utils::DAabb;
 use std::f32::consts::*;
 
@@ -59,7 +59,7 @@ fn main() {
         ))
 
         .add_systems(Startup, setup)
-        .add_systems(Update, camera)
+        .add_systems(Update, (camera, update_debug_text))
 
         .init_resource::<Cam>()
         
@@ -91,6 +91,9 @@ impl FromWorld for Cam {
     }
 }
 
+#[derive(Component)]
+struct DebugTextComponent;
+
 /// set up a simple 3D scene
 fn setup(
     mut commands: Commands,
@@ -109,7 +112,7 @@ fn setup(
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
             total_subdivs: 4..10,
             chunk_split_subdivs: 7,
-            chunk_merge_subdivs: 1,
+            chunk_merge_subdivs: 5,
 
             chunk_subdiv_distances: 0.0..20_000.0,
             root_aabb: aabb,
@@ -139,6 +142,69 @@ fn setup(
         transform: Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
         ..default()
     }).id());
+    // // ui camera
+    // commands.spawn(Camera2dBundle::default());
+
+    let root_uinode = commands
+        .spawn(NodeBundle {
+            style: Style {
+                width: Val::Percent(100.),
+                height: Val::Percent(100.),
+                justify_content: JustifyContent::SpaceBetween,
+
+                ..default()
+            },
+            ..default()
+        })
+        .id();
+
+    commands.spawn(NodeBundle {
+        style: Style {
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::SpaceBetween,
+            align_items: AlignItems::Start,
+            flex_grow: 1.,
+            margin: UiRect::axes(Val::Px(5.), Val::Px(5.)),
+            ..default()
+        },
+        ..default()
+    }).with_children(|builder| {
+        builder.spawn(TextBundle::from_section(
+            "Chunks: ",
+            TextStyle {
+                font_size: 15.0,
+                ..default()
+            },
+        )).insert(DebugTextComponent);
+    }).set_parent(root_uinode);
+}
+
+fn update_debug_text(
+    time: Res<Time>,
+    diagnostics: Res<DiagnosticsStore>,
+
+    mut debug_text: Query<&mut Text, With<DebugTextComponent>>,
+    chunks: Query<(), With<ChunkComponent>>,
+) {
+    let mut fps = 0.0;
+    if let Some(fps_diagnostic) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
+        if let Some(fps_smoothed) = fps_diagnostic.smoothed() {
+            fps = fps_smoothed;
+        }
+    }
+
+    let mut frame_time = time.delta_seconds_f64();
+    if let Some(frame_time_diagnostic) =
+        diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME)
+    {
+        if let Some(frame_time_smoothed) = frame_time_diagnostic.smoothed() {
+            frame_time = frame_time_smoothed;
+        }
+    }
+
+    let chunk_count = chunks.iter().len();
+    let mut debug_text = debug_text.single_mut();
+    debug_text.sections[0].value = format!("{fps:.1} fps - {frame_time:.3} ms/frame\nChunks: {chunk_count}");
 }
 
 fn camera(
