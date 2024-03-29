@@ -70,6 +70,7 @@ fn main() {
 pub struct Cam {
     pub entity: Option<Entity>,
     pub angle: Vec2,
+    pub local_angle: Vec2,
     pub distance: f32,
 }
 
@@ -84,6 +85,7 @@ impl FromWorld for Cam {
         let mut this = Self {
             entity: None,
             angle: Vec2::ZERO,
+            local_angle: Vec2::ZERO,
             distance: 0.,
         };
         this.reset_dist();
@@ -184,7 +186,7 @@ fn update_debug_text(
     diagnostics: Res<DiagnosticsStore>,
 
     mut debug_text: Query<&mut Text, With<DebugTextComponent>>,
-    chunks: Query<&ChunkComponent>,
+    chunks: Query<(&ChunkComponent, &ViewVisibility)>,
 ) {
     let mut fps = 0.0;
     if let Some(fps_diagnostic) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
@@ -204,9 +206,11 @@ fn update_debug_text(
 
     let mut chunk_count = 0;
     let mut chunks_list = String::new();
-    for chunk in &chunks {
-        chunk_count += 1;
-        chunks_list += &format!("[{chunk_count}] {:?} @ {}\n", chunk.path, chunk.target_subdivs);
+    for (chunk, visible) in &chunks {
+        if visible.get() {
+            chunk_count += 1;
+            chunks_list += &format!("[{chunk_count:02}] {:?} @ {}\n", chunk.path, chunk.target_subdivs);
+        }
     }
 
     let mut debug_text = debug_text.single_mut();
@@ -241,10 +245,17 @@ fn camera(
         camera.distance += 2000.;
     }
     if mouse_input.pressed(MouseButton::Left) {
+        camera.local_angle = Vec2::ZERO;
         for me in mouse_move_events.read() {
             camera.angle.y -= me.delta.y / 120.;
             camera.angle.x -= me.delta.x / 120.;
             camera.angle.y = camera.angle.y.clamp(-PI/2.+0.01, PI/2.-0.01);
+        }
+    }
+    if mouse_input.pressed(MouseButton::Right) {
+        for me in mouse_move_events.read() {
+            camera.local_angle.y -= me.delta.y / 120.;
+            camera.local_angle.x -= me.delta.x / 120.;
         }
     }
     if kb_input.just_pressed(KeyCode::KeyR) {
@@ -256,4 +267,5 @@ fn camera(
         Quat::from_rotation_x(camera.angle.y) *
         (Vec3::new(0., 0., 1.) * camera.distance);
     trans.look_at(Vec3::ZERO, Vec3::Y);
+    trans.rotate_local(Quat::from_euler(EulerRot::XYZ, camera.local_angle.x, camera.local_angle.y, 0.))
 }

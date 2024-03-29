@@ -1,4 +1,5 @@
 use bevy_math::{bounding::Aabb3d, DVec3};
+use bevy_render::primitives::Aabb;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct DAabb {
@@ -46,6 +47,12 @@ impl Into<Aabb3d> for DAabb {
             min: self.min().as_vec3(),
             max: self.max().as_vec3(),
         }
+    }
+}
+
+impl Into<Aabb> for DAabb {
+    fn into(self) -> Aabb {
+        Aabb::from_min_max(self.min().as_vec3(), self.max().as_vec3())
     }
 }
 

@@ -4,7 +4,7 @@ use std::{ops::Range, sync::Arc};
 use chunk_svo::*;
 
 use ordered_float::OrderedFloat;
-use bevy::{ecs::system::EntityCommands, prelude::*, tasks::{block_on, AsyncComputeTaskPool, Task}};
+use bevy::{ecs::system::EntityCommands, prelude::*, render::primitives::Aabb, tasks::{block_on, AsyncComputeTaskPool, Task}};
 use svo::{mesh_generation::marching_cubes, CellPath};
 use utils::{AabbExt, DAabb, RangeExt};
 
@@ -213,6 +213,8 @@ fn chunks_splitting_system(
     mut svo_renders: Query<(Entity, &mut SvoRendererComponent, &mut SvoProviderComponent)>,
 ) {
     for (renderer_entity, mut renderer, mut provider) in svo_renders.iter_mut() {
+        let root_aabb = renderer.options.root_aabb;
+
         let chunks_to_split = std::mem::take(&mut renderer.chunks_to_split);
         let chunks_to_merge = std::mem::take(&mut renderer.chunks_to_merge);
 
@@ -235,6 +237,7 @@ fn chunks_splitting_system(
                     ChunkComponent::new(child_path),
                     TransformBundle::default(),
                     VisibilityBundle::default(),
+                    Into::<Aabb>::into(child_path.get_aabb(root_aabb)),
                 )).set_parent(renderer_entity).id();
                 child_cell.data.entity = chunk_entitiy;
                 if let Some(on_new_chunk) = &mut on_new_chunk {
@@ -293,6 +296,7 @@ fn chunks_splitting_system(
                 ChunkComponent::new(new_chunk_path),
                 TransformBundle::default(),
                 VisibilityBundle::default(),
+                Into::<Aabb>::into(new_chunk_path.get_aabb(root_aabb)),
             )).set_parent(renderer_entity).id();
             *renderer.chunks_svo.follow_path_mut(new_chunk_path).1 = svo::LeafCell {
                 data: ChunkSvoData { entity: new_chunk_entity, }
