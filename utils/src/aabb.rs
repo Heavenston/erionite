@@ -1,6 +1,6 @@
 use bevy_math::{bounding::Aabb3d, DVec3};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct DAabb {
     /// Also min position, included
     pub position: DVec3,

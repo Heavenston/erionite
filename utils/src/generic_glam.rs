@@ -29,6 +29,18 @@ pub trait AabbExt<T: GlamFloat<Aabb3d = Self>>
     fn max(&self) -> T::Vec3;
 
     fn size(&self) -> T::Vec3;
+
+    fn closest_point(&self, point: T::Vec3) -> T::Vec3 {
+        let point = point.array();
+        let max = self.max().array();
+        let min = self.min().array();
+
+        T::Vec3::from_array([0,1,2].map(|i|
+            if point[i] > max[i]      { max[i] }
+            else if point[i] < min[i] { min[i] }
+            else                      { point[i] }
+        ))
+    }
 }
 
 impl AabbExt<f32> for Aabb3d {
@@ -59,10 +71,16 @@ impl AabbExt<f64> for DAabb {
     }
 }
 
-pub trait Vec3Ext<T>
+pub trait Vec3Ext<T: Num + Copy>
     where Self: Copy
 {
     fn new(x: T, y: T, z: T) -> Self;
+    fn from_array(a: [T; 3]) -> Self {
+        Self::new(a[0], a[1], a[1])
+    }
+    fn zero() -> Self {
+        Self::new(T::zero(), T::zero(), T::zero())
+    }
 
     fn x(&self) -> T;
     fn y(&self) -> T;

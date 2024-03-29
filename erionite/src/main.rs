@@ -1,8 +1,13 @@
-mod generator;
+#![feature(type_changing_struct_update)]
+#![feature(option_take_if)]
 
-use bevy::{input::mouse::{MouseMotion, MouseWheel}, math::{bounding::Aabb3d, DVec3}, prelude::*};
-use generator::Generator;
-use svo::{mesh_generation::marching_cubes, CellPath};
+mod generator;
+mod svo_renderer;
+mod svo_provider;
+
+use bevy::{ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, prelude::*};
+use svo_provider::generator_svo_provider;
+use svo_renderer::{SvoRendererBundle, SvoRendererComponent, SvoRendererComponentOptions};
 use utils::DAabb;
 use std::f32::consts::*;
 
@@ -10,7 +15,14 @@ fn main() {
     App::new()
         .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
         .add_plugins(bevy::diagnostic::LogDiagnosticsPlugin::default())
-        .add_plugins(DefaultPlugins)
+        .add_plugins((
+            DefaultPlugins.set(bevy::log::LogPlugin {
+                level: bevy::log::Level::INFO,
+                filter: "wgpu=error,erionite=trace".to_string(),
+                ..default()
+            }),
+            svo_renderer::SvoRendererPlugin::default()
+        ))
 
         .add_systems(Startup, setup)
         .add_systems(Update, camera)
@@ -48,38 +60,37 @@ impl FromWorld for Cam {
 /// set up a simple 3D scene
 fn setup(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut camera: ResMut<Cam>,
 ) {
-    let et = 7;
-
     let radius = 2000.;
-    let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(radius*1.5));
+    let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(radius*2.));
 
-    println!("Generating...");
-    let svo = generator::PlanetGenerator {
-        radius,
-        seed: 5,
-    }.generate_chunk(aabb, CellPath::new(), et);
-
-    println!("Generating mesh...");
-    let mut out = marching_cubes::Out::new(true);
-    marching_cubes::run(
-        &mut out, CellPath::new(), &svo, aabb.into(), et
-    );
-    let mesh = meshes.add(out.into_mesh());
-    println!("Finished");
-
-    let parent = commands.spawn(TransformBundle::default()).id();
-    commands.spawn(PbrBundle {
-        mesh,
-        material: materials.add(StandardMaterial {
-            base_color: Color::WHITE,
-            ..default()
-        }),
+    let mat = materials.add(StandardMaterial {
         ..default()
-    }).set_parent(parent);
+    });
+
+    commands.spawn(SvoRendererBundle {
+        transform: TransformBundle::default(),
+        svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
+            total_subdivs: 4..8,
+            chunk_split_subdivs: 4,
+            chunk_merge_subdivs: 1,
+
+            chunk_subdiv_distances: 0.0..20.0,
+            root_aabb: aabb,
+            on_new_chunk: Some(Box::new(move |mut commands: EntityCommands<'_>| {
+                commands.insert(mat.clone());
+            }) as Box<_>),
+        }),
+        svo_provider: generator_svo_provider::GeneratorSvoProvider::new(
+            generator::PlanetGenerator {
+                radius,
+                seed: 5,
+            },
+            aabb
+        ).into(),
+    });
 
     commands.spawn(DirectionalLightBundle {
         transform: Transform {
