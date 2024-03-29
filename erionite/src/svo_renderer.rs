@@ -175,6 +175,7 @@ fn chunks_subdivs_system(
                 .map(|campos| aabb.closest_point(campos).distance_squared(campos))
                 .min_by_key(|&d| OrderedFloat(d))
             else { continue };
+            let closest_camera_dist = closest_camera_dist.sqrt();
 
             let dists = &renderer.options.chunk_subdiv_distances;
             let subdivs_range = renderer.options.total_subdivs.range_map(|&x| f64::from(x));
@@ -182,6 +183,7 @@ fn chunks_subdivs_system(
             let subdiv_proportion = (
                 dists.clamped(closest_camera_dist) - dists.start
             ) / dists.extent();
+            let subdiv_proportion = 1. - subdiv_proportion;
             let subdivs = subdivs_range.extent() * subdiv_proportion + subdivs_range.start;
             let subdivs = (subdivs.round() as u32).saturating_sub(chunkpath.depth());
            

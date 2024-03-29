@@ -41,7 +41,7 @@ pub struct Cam {
 
 impl Cam {
     fn reset_dist(&mut self) {
-        self.distance = 4000.;
+        self.distance = 10000.;
     }
 }
 
@@ -73,11 +73,11 @@ fn setup(
     commands.spawn(SvoRendererBundle {
         transform: TransformBundle::default(),
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
-            total_subdivs: 4..8,
-            chunk_split_subdivs: 6,
+            total_subdivs: 4..10,
+            chunk_split_subdivs: 5,
             chunk_merge_subdivs: 1,
 
-            chunk_subdiv_distances: 0.0..2.0,
+            chunk_subdiv_distances: 0.0..20_000.0,
             root_aabb: aabb,
             on_new_chunk: Some(Box::new(move |mut commands: EntityCommands<'_>| {
                 commands.insert(mat.clone());
@@ -124,11 +124,13 @@ fn camera(
     let mut trans = transforms.get_mut(entity).unwrap();
 
     for me in mouse_wheel_events.read() {
+        camera.distance -= 2000.;
         if me.y < 0. {
-            camera.distance *= 1.25;
+            camera.distance *= 1.1;
         } else if me.y > 0. {
-            camera.distance /= 1.25;
+            camera.distance /= 1.1;
         }
+        camera.distance += 2000.;
     }
     if mouse_input.pressed(MouseButton::Left) {
         for me in mouse_move_events.read() {
