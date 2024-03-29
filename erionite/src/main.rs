@@ -184,7 +184,7 @@ fn update_debug_text(
     diagnostics: Res<DiagnosticsStore>,
 
     mut debug_text: Query<&mut Text, With<DebugTextComponent>>,
-    chunks: Query<(), With<ChunkComponent>>,
+    chunks: Query<&ChunkComponent>,
 ) {
     let mut fps = 0.0;
     if let Some(fps_diagnostic) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
@@ -202,9 +202,17 @@ fn update_debug_text(
         }
     }
 
-    let chunk_count = chunks.iter().len();
+    let mut chunk_count = 0;
+    let mut chunks_list = String::new();
+    for chunk in &chunks {
+        chunk_count += 1;
+        chunks_list += &format!("[{chunk_count}] {:?} @ {}\n", chunk.path, chunk.target_subdivs);
+    }
+
     let mut debug_text = debug_text.single_mut();
-    debug_text.sections[0].value = format!("{fps:.1} fps - {frame_time:.3} ms/frame\nChunks: {chunk_count}");
+    debug_text.sections[0].value = format!(
+        "{fps:.1} fps - {frame_time:.3} ms/frame\nChunks: {chunk_count}\n{chunks_list}"
+    );
 }
 
 fn camera(

@@ -116,6 +116,13 @@ fn new_renderer_system(
     mut svo_renders: Query<(Entity, &mut SvoRendererComponent), Added<SvoRendererComponent>>,
 ) {
     for (entity, mut renderer) in &mut svo_renders {
+        if !renderer.chunks_svo.is_leaf() {
+            continue;
+        }
+        if renderer.chunks_svo.as_leaf().data.entity != Entity::PLACEHOLDER {
+            continue;
+        }
+
         commands.entity(entity).insert(VisibilityBundle::default());
         let root_chunk_entitiy = commands.spawn((
             ChunkComponent::new(CellPath::new()),
@@ -211,6 +218,8 @@ fn chunks_splitting_system(
 
         // Splitting chunks
         for chunkpath in chunks_to_split {
+            log::debug!("split {chunkpath:?}");
+
             let mut on_new_chunk = renderer.options.on_new_chunk.take();
             let cell = renderer.chunks_svo.follow_path_mut(chunkpath).1;
             if let Some(e) = cell.try_leaf_mut().map(|leaf| leaf.data.entity) {
@@ -245,6 +254,15 @@ fn chunks_splitting_system(
             };
             let mut children_entities = [Entity::PLACEHOLDER; 8];
 
+            // If chunk isn't a leaf node at that position it may have already been
+            // merged in previous iterations
+            {
+                let (foundpath, cell) = renderer.chunks_svo.follow_path(chunkpath);
+                if foundpath != chunkpath || cell.is_inner() {
+                    continue;
+                }
+            }
+
             // check if merging would mean immediately splitting ('overcrowded' chunk)
             for (i, child) in new_chunk_path.children().into_iter().enumerate() {
                 let Some(cleaf) =
@@ -262,6 +280,8 @@ fn chunks_splitting_system(
 
                 children_entities[i] = cleaf.data.entity;
             }
+
+            log::debug!("merge into {new_chunk_path:?}");
 
             for &nentity in &children_entities {
                 let Some(mut c) = commands.get_entity(nentity)
@@ -305,14 +325,17 @@ fn chunk_system(
         let Ok((renderer, mut provider)) = svo_renders.get_mut(parent.get())
         else { continue; };
 
-        if chunk.should_update_data || chunk.target_subdivs != chunk.data_subdivs {
+        let actual_subdivs = renderer.options.chunk_split_subdivs
+            .min(chunk.target_subdivs);
+
+        if chunk.should_update_data || actual_subdivs != chunk.data_subdivs {
             chunk.chunk_request_task = Some(
                 provider.request_chunk(
                     chunk.path,
-                    chunk.target_subdivs
+                    actual_subdivs
                 )
             );
-            chunk.data_subdivs = chunk.target_subdivs;
+            chunk.data_subdivs = actual_subdivs;
             chunk.should_update_data = false;
         }
 
@@ -330,7 +353,7 @@ fn chunk_system(
 
             let chunkpath = chunk.path;
             let root_aabb = renderer.options.root_aabb;
-            let subdivs = chunk.target_subdivs;
+            let subdivs = actual_subdivs;
             chunk.mesh_task = Some(AsyncComputeTaskPool::get().spawn(async move {
                 let mut out = marching_cubes::Out::new(false);
                 log::trace!("Rendering mesh...");
