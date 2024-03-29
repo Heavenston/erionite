@@ -6,9 +6,17 @@ pub struct ChunkMeshGenSettings {
     pub collisions: bool,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct ChunkSvoData {
-    pub entity: Option<Entity>,
+    pub entity: Entity,
+}
+
+impl Default for ChunkSvoData {
+    fn default() -> Self {
+        Self {
+            entity: Entity::PLACEHOLDER,
+        }
+    }
 }
 
 impl svo::InternalData for ChunkSvoData {}

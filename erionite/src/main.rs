@@ -11,16 +11,50 @@ use svo_renderer::{SvoRendererBundle, SvoRendererComponent, SvoRendererComponent
 use utils::DAabb;
 use std::f32::consts::*;
 
+fn setup_logger() -> Result<(), Box<dyn std::error::Error>> {
+    use fern::colors::{ ColoredLevelConfig, Color };
+    use log::LevelFilter as LF;
+
+    let colors = ColoredLevelConfig::new()
+        .error(Color::Red)
+        .warn(Color::Yellow)
+        .info(Color::Green)
+        .debug(Color::White)
+        .trace(Color::BrightBlack);
+
+    fern::Dispatch::new()
+        .filter(|m|
+            !m.target().starts_with("mio")
+        )
+        .format(move |out, message, record| {
+            out.finish(format_args!(
+                "{color_line}[{}][{}] {}\x1B[39m",
+                record.target(),
+                record.level(),
+                message,
+
+                color_line = format_args!(
+                    "\x1B[{}m",
+                    colors.get_color(&record.level()).to_fg_str()
+                ),
+            ))
+        })
+        .level(LF::Info)
+        .level_for("wgpu", LF::Error)
+        .level_for("erionite", LF::Trace)
+        .chain(std::io::stdout())
+        .apply()?;
+    Ok(())
+}
+
 fn main() {
+    setup_logger().unwrap();
+
     App::new()
         .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
         .add_plugins(bevy::diagnostic::LogDiagnosticsPlugin::default())
         .add_plugins((
-            DefaultPlugins.set(bevy::log::LogPlugin {
-                level: bevy::log::Level::INFO,
-                filter: "wgpu=error,erionite=trace".to_string(),
-                ..default()
-            }),
+            DefaultPlugins.build().disable::<bevy::log::LogPlugin>(),
             svo_renderer::SvoRendererPlugin::default()
         ))
 

@@ -5,7 +5,7 @@ use chunk_svo::*;
 
 use ordered_float::OrderedFloat;
 use bevy::{ecs::system::EntityCommands, prelude::*, tasks::{block_on, AsyncComputeTaskPool, Task}};
-use svo::{mesh_generation::marching_cubes, Cell, CellPath};
+use svo::{mesh_generation::marching_cubes, CellPath};
 use utils::{AabbExt, DAabb, RangeExt};
 
 use crate::svo_provider::SvoProviderComponent;
@@ -109,13 +109,6 @@ impl ChunkComponent {
             should_update_mesh: false,
         }
     }
-
-    fn with_update_data(self) -> Self {
-        Self {
-            should_update_data: true,
-            ..self
-        }
-    }
 }
 
 fn new_renderer_system(
@@ -130,7 +123,7 @@ fn new_renderer_system(
             VisibilityBundle::default(),
         )).set_parent(entity).id();
         renderer.chunks_svo = svo::LeafCell {
-            data: ChunkSvoData { entity: Some(root_chunk_entitiy) }
+            data: ChunkSvoData { entity: root_chunk_entitiy }
         }.into();
         if let Some(on_new_chunk) = &mut renderer.options.on_new_chunk {
             on_new_chunk(commands.entity(root_chunk_entitiy));
@@ -161,9 +154,7 @@ fn chunks_subdivs_system(
         for svo::SvoIterItem {
             cell: chunkcell, path: chunkpath,
         } in renderer.chunks_svo.iter() {
-            let Some(entity) = chunkcell.data.entity
-                else { continue; };
-            let Ok(mut chunk) = chunks.get_mut(entity)
+            let Ok(mut chunk) = chunks.get_mut(chunkcell.data.entity)
             else {
                 log::warn!("Stored chunk entity does not exist");
                 continue;
@@ -209,16 +200,17 @@ fn chunks_subdivs_system(
 fn chunks_splitting_system(
     mut commands: Commands,
     mut chunks: Query<&mut ChunkComponent>,
-    mut svo_renders: Query<(Entity, &mut SvoRendererComponent, &mut SvoProviderComponent, &GlobalTransform)>,
+    mut svo_renders: Query<(Entity, &mut SvoRendererComponent, &mut SvoProviderComponent)>,
 ) {
-    for (renderer_entity, mut renderer, mut provider, &trans) in svo_renders.iter_mut() {
+    for (renderer_entity, mut renderer, mut provider) in svo_renders.iter_mut() {
         let chunks_to_split = std::mem::take(&mut renderer.chunks_to_split);
         let chunks_to_merge = std::mem::take(&mut renderer.chunks_to_merge);
 
+        // Splitting chunks
         for chunkpath in chunks_to_split {
             let mut on_new_chunk = renderer.options.on_new_chunk.take();
             let cell = renderer.chunks_svo.follow_path_mut(chunkpath).1;
-            if let Some(e) = cell.try_leaf_mut().and_then(|leaf| leaf.data.entity.take()) {
+            if let Some(e) = cell.try_leaf_mut().map(|leaf| leaf.data.entity) {
                 commands.entity(e).despawn();
             }
             cell.split();
@@ -232,7 +224,7 @@ fn chunks_splitting_system(
                     TransformBundle::default(),
                     VisibilityBundle::default(),
                 )).set_parent(renderer_entity).id();
-                child_cell.data.entity = Some(chunk_entitiy);
+                child_cell.data.entity = chunk_entitiy;
                 if let Some(on_new_chunk) = &mut on_new_chunk {
                     on_new_chunk(commands.entity(chunk_entitiy));
                 }
@@ -241,31 +233,56 @@ fn chunks_splitting_system(
             renderer.options.on_new_chunk = on_new_chunk;
         }
 
-        'splits: for chunkpath in chunks_to_merge {
+        // merging chunks
+        'merges: for chunkpath in chunks_to_merge {
+            let Some(new_chunk_path) = chunkpath.parent()
+            else {
+                log::warn!("root path have been set for splitting");
+                continue;
+            };
+            let mut children_entities = [Entity::PLACEHOLDER; 8];
+
             // check if merging would mean immediately splitting ('overcrowded' chunk)
-            for (_, neighbor) in chunkpath.neighbors() {
-                let Some(nleaf) =
-                    renderer.chunks_svo.follow_path(neighbor).1.try_leaf()
+            for (i, child) in new_chunk_path.children().into_iter().enumerate() {
+                let Some(cleaf) =
+                    renderer.chunks_svo.follow_path(child).1.try_leaf()
                 // not a leaf = either its children will be merged later
                 // or merging would create an overcroweded chunk
-                else { continue 'splits; };
+                else { continue 'merges; };
+                let Some(cchunk) = chunks.get(cleaf.data.entity).ok()
                 // non existent = merge is probably fine ^^
-                let Some(nchunk) = nleaf.data.entity.and_then(|e| chunks.get(e).ok())
                 else { continue; };
                 // is overcrowded
-                if nchunk.target_subdivs+1 > renderer.options.chunk_split_subdivs {
-                    continue 'splits;
+                if cchunk.target_subdivs+1 > renderer.options.chunk_split_subdivs {
+                    continue 'merges;
                 }
+
+                children_entities[i] = cleaf.data.entity;
             }
-            // TODO: Perform merging
+
+            for &nentity in &children_entities {
+                let Some(mut c) = commands.get_entity(nentity)
+                else { continue; };
+                c.despawn();
+            }
+
+            let new_chunk_entity = commands.spawn((
+                ChunkComponent::new(new_chunk_path),
+                TransformBundle::default(),
+                VisibilityBundle::default(),
+            )).set_parent(renderer_entity).id();
+            *renderer.chunks_svo.follow_path_mut(new_chunk_path).1 = svo::LeafCell {
+                data: ChunkSvoData { entity: new_chunk_entity, }
+            }.into();
+            if let Some(on_new_chunk) = &mut renderer.options.on_new_chunk {
+                on_new_chunk(commands.entity(new_chunk_entity));
+            }
         }
 
         let dirty = provider.drain_dirty_chunks();
         for &c in &*dirty {
             for chunkcell in renderer.chunks_svo.follow_path(c).1.iter() {
-                let Some(entity) = chunkcell.cell.data.entity
-                else {continue};
-                let Ok(mut chunk) = chunks.get_mut(entity)
+                let Ok(mut chunk) = chunks.get_mut(chunkcell.cell.data.entity)
                 else {continue};
                 chunk.should_update_data = true;
             }
