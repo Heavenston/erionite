@@ -422,7 +422,7 @@ fn kernel(
     vertices: [Vec3; 8]
 ) {
     let id = samples.iter().rev().fold(0u8, |id, (_, k)| {
-        (id << 1) | if *k == TerrainCellKind::Air { 0 } else { 1 }
+        (id << 1) | if *k == TerrainCellKind::Air || *k == TerrainCellKind::Invalid { 0 } else { 1 }
     });
 
     let mut edges = [Vec3::ONE * -1.; 12];
@@ -489,7 +489,7 @@ pub fn run(
 
     let mut state = State::new(out);
 
-    for current in utils::every_cubes::<f32>(aabb.into(), cube_size.into()) {
+    for current in utils::every_cubes::<f32>(aabb, cube_size) {
         let vertices = VERTICES.map(|d| current + d * cube_size);
         let samples = vertices
             .map(|c|

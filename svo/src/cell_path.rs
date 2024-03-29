@@ -170,17 +170,15 @@ impl CellPath {
                 .map(|xx| ((x, y, z), xx)))
     }
 
-    pub fn children(self) -> [Self; 8] {
+    pub fn components() -> [u3; 8] {
         [
-            self.with_push(u3::new(0b000)),
-            self.with_push(u3::new(0b001)),
-            self.with_push(u3::new(0b010)),
-            self.with_push(u3::new(0b011)),
-            self.with_push(u3::new(0b100)),
-            self.with_push(u3::new(0b101)),
-            self.with_push(u3::new(0b110)),
-            self.with_push(u3::new(0b111)),
+            u3::new(0b000), u3::new(0b001), u3::new(0b010), u3::new(0b011),
+            u3::new(0b100), u3::new(0b101), u3::new(0b110), u3::new(0b111),
         ]
+    }
+
+    pub fn children(self) -> [Self; 8] {
+        Self::components().map(|p| self.with_push(p))
     }
 
     /// Returns an iterator over all paths possible with the given depth
@@ -315,6 +313,26 @@ mod tests {
         let path_b = CellPath(0b1_100_101);
         assert_eq!(path_a.extended(path_b), CellPath(0b1_110_011_100_101));
         assert_eq!(path_b.extended(path_a), CellPath(0b1_100_101_110_011));
+    }
+
+    #[test]
+    fn test_take_depth() {
+        assert_eq!(
+            CellPath(0b1_000_010_010_111).take_depth(1),
+            CellPath(0b1_000)
+        );
+        assert_eq!(
+            CellPath(0b1_001_010_101_010).take_depth(1),
+            CellPath(0b1_001)
+        );
+        assert_eq!(
+            CellPath(0b1_010_110_101_010).take_depth(2),
+            CellPath(0b1_010_110)
+        );
+        assert_eq!(
+            CellPath(0b1_010_110_101_010).take_depth(3),
+            CellPath(0b1_010_110_101)
+        );
     }
 
     #[test]

@@ -41,7 +41,7 @@ pub struct Cam {
 
 impl Cam {
     fn reset_dist(&mut self) {
-        self.distance = 3000.;
+        self.distance = 4000.;
     }
 }
 
@@ -74,10 +74,10 @@ fn setup(
         transform: TransformBundle::default(),
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
             total_subdivs: 4..8,
-            chunk_split_subdivs: 4,
+            chunk_split_subdivs: 6,
             chunk_merge_subdivs: 1,
 
-            chunk_subdiv_distances: 0.0..20.0,
+            chunk_subdiv_distances: 0.0..2.0,
             root_aabb: aabb,
             on_new_chunk: Some(Box::new(move |mut commands: EntityCommands<'_>| {
                 commands.insert(mat.clone());

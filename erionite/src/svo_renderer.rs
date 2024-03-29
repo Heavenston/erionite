@@ -5,7 +5,7 @@ use chunk_svo::*;
 
 use ordered_float::OrderedFloat;
 use bevy::{ecs::system::EntityCommands, prelude::*, tasks::{block_on, AsyncComputeTaskPool, Task}};
-use svo::{mesh_generation::marching_cubes, CellPath};
+use svo::{mesh_generation::marching_cubes, Cell, CellPath};
 use utils::{AabbExt, DAabb, RangeExt};
 
 use crate::svo_provider::SvoProviderComponent;
@@ -105,8 +105,15 @@ impl ChunkComponent {
             chunk_request_task: None,
             mesh_task: None,
 
-            should_update_data: true,
+            should_update_data: false,
             should_update_mesh: false,
+        }
+    }
+
+    fn with_update_data(self) -> Self {
+        Self {
+            should_update_data: true,
+            ..self
         }
     }
 }
@@ -198,15 +205,38 @@ fn chunks_subdivs_system(
 
 /// Splits / merges chunks
 fn chunks_splitting_system(
+    mut commands: Commands,
     mut chunks: Query<&mut ChunkComponent>,
-    mut svo_renders: Query<(&mut SvoRendererComponent, &GlobalTransform)>,
+    mut svo_renders: Query<(Entity, &mut SvoRendererComponent, &mut SvoProviderComponent, &GlobalTransform)>,
 ) {
-    for (mut renderer, &trans) in svo_renders.iter_mut() {
+    for (renderer_entity, mut renderer, mut provider, &trans) in svo_renders.iter_mut() {
         let chunks_to_split = std::mem::take(&mut renderer.chunks_to_split);
         let chunks_to_merge = std::mem::take(&mut renderer.chunks_to_merge);
 
         for chunkpath in chunks_to_split {
-            // TODO: Perform splitting
+            let mut on_new_chunk = renderer.options.on_new_chunk.take();
+            let cell = renderer.chunks_svo.follow_path_mut(chunkpath).1;
+            if let Some(e) = cell.try_leaf_mut().and_then(|leaf| leaf.data.entity.take()) {
+                commands.entity(e).despawn();
+            }
+            cell.split();
+
+            for child in CellPath::components() {
+                let child_path = chunkpath.with_push(child);
+                let child_cell = cell.as_inner_mut().get_child_mut(child).as_leaf_mut();
+
+                let chunk_entitiy = commands.spawn((
+                    ChunkComponent::new(child_path),
+                    TransformBundle::default(),
+                    VisibilityBundle::default(),
+                )).set_parent(renderer_entity).id();
+                child_cell.data.entity = Some(chunk_entitiy);
+                if let Some(on_new_chunk) = &mut on_new_chunk {
+                    on_new_chunk(commands.entity(chunk_entitiy));
+                }
+            }
+
+            renderer.options.on_new_chunk = on_new_chunk;
         }
 
         'splits: for chunkpath in chunks_to_merge {
@@ -227,6 +257,17 @@ fn chunks_splitting_system(
             }
             // TODO: Perform merging
         }
+
+        let dirty = provider.drain_dirty_chunks();
+        for &c in &*dirty {
+            for chunkcell in renderer.chunks_svo.follow_path(c).1.iter() {
+                let Some(entity) = chunkcell.cell.data.entity
+                else {continue};
+                let Ok(mut chunk) = chunks.get_mut(entity)
+                else {continue};
+                chunk.should_update_data = true;
+            }
+        }
     }
 }
 
@@ -244,7 +285,10 @@ fn chunk_system(
 
         if chunk.should_update_data || chunk.target_subdivs != chunk.data_subdivs {
             chunk.chunk_request_task = Some(
-                provider.request_chunk(chunk.path, chunk.target_subdivs)
+                provider.request_chunk(
+                    chunk.path,
+                    chunk.target_subdivs
+                )
             );
             chunk.data_subdivs = chunk.target_subdivs;
             chunk.should_update_data = false;
@@ -262,13 +306,15 @@ fn chunk_system(
         {
             chunk.should_update_mesh = false;
 
-            let aabb = renderer.options.root_aabb;
+            let chunkpath = chunk.path;
+            let root_aabb = renderer.options.root_aabb;
             let subdivs = chunk.target_subdivs;
             chunk.mesh_task = Some(AsyncComputeTaskPool::get().spawn(async move {
-                let mut out = marching_cubes::Out::new(true);
+                let mut out = marching_cubes::Out::new(false);
                 log::debug!("Rendering mesh...");
+
                 marching_cubes::run(
-                    &mut out, CellPath::new(), &*data, aabb.into(), subdivs
+                    &mut out, chunkpath, &*data, root_aabb.into(), subdivs
                 );
                 log::debug!("Finished mesh");
                 out.into_mesh()

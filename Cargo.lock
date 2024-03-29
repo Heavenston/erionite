@@ -1697,6 +1697,7 @@ name = "erionite"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "either",
  "log",
  "noise 0.9.0",
  "ordered-float",
