@@ -38,9 +38,9 @@ pub struct SvoRendererBundle {
 
 pub struct SvoRendererComponentOptions {
     pub total_subdivs: Range<u32>,
-    /// Chunks with or more subdivs are splitted
+    /// Chunks with more subdivs are splitted
     pub chunk_split_subdivs: u32,
-    /// Chunks with or less subdivs are merged
+    /// Chunks with less subdivs are merged
     pub chunk_merge_subdivs: u32,
 
     /// start is the camera distance at which the chunk should have max_subdivs
@@ -183,11 +183,14 @@ fn chunks_subdivs_system(
                 chunk.target_subdivs = subdivs;
             }
 
-            if chunk.target_subdivs >= renderer.options.chunk_split_subdivs {
+            if chunk.target_subdivs > renderer.options.chunk_split_subdivs {
                 chunks_to_split.push(chunkpath);
             }
-            if chunk.target_subdivs <= renderer.options.chunk_merge_subdivs {
-                chunks_to_merge.push(chunkpath);
+            if chunk.target_subdivs < renderer.options.chunk_merge_subdivs {
+                // don't merge root
+                if chunkpath.len() > 0 {
+                    chunks_to_merge.push(chunkpath);
+                }
             }
         }
 
@@ -237,7 +240,7 @@ fn chunks_splitting_system(
         'merges: for chunkpath in chunks_to_merge {
             let Some(new_chunk_path) = chunkpath.parent()
             else {
-                log::warn!("root path have been set for splitting");
+                log::warn!("root path have been set for merging");
                 continue;
             };
             let mut children_entities = [Entity::PLACEHOLDER; 8];
