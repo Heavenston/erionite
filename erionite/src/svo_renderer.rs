@@ -330,12 +330,12 @@ fn chunk_system(
             let subdivs = chunk.target_subdivs;
             chunk.mesh_task = Some(AsyncComputeTaskPool::get().spawn(async move {
                 let mut out = marching_cubes::Out::new(false);
-                log::debug!("Rendering mesh...");
+                log::trace!("Rendering mesh...");
 
                 marching_cubes::run(
                     &mut out, chunkpath, &*data, root_aabb.into(), subdivs
                 );
-                log::debug!("Finished mesh");
+                log::trace!("Finished mesh");
                 out.into_mesh()
             }));
         }

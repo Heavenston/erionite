@@ -65,7 +65,7 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
             };
             let mut lock;
             if must_regen {
-                log::debug!("Generating {path:?}@{subdivs}...");
+                log::trace!("Generating {path:?}@{subdivs}...");
                 let result = generator.generate_chunk(
                     aabb,
                     path,
@@ -82,7 +82,7 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
                     svo::StatBool(true)
                 );
                 dirties.lock().unwrap().extend(path.neighbors().map(|(_, n)| n));
-                log::debug!("Finished {path:?}@{subdivs}...");
+                log::trace!("Finished {path:?}@{subdivs}...");
             }
             else {
                 lock = data.lock().unwrap();
