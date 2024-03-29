@@ -108,7 +108,7 @@ fn setup(
         transform: TransformBundle::default(),
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
             total_subdivs: 4..10,
-            chunk_split_subdivs: 5,
+            chunk_split_subdivs: 7,
             chunk_merge_subdivs: 1,
 
             chunk_subdiv_distances: 0.0..20_000.0,
