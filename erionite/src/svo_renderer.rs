@@ -38,6 +38,7 @@ pub struct SvoRendererBundle {
 
 pub struct SvoRendererComponentOptions {
     pub max_subdivs: u32,
+    pub min_subdivs: u32,
 
     /// Chunks with more subdivs are splitted
     pub chunk_split_subdivs: u32,
@@ -185,7 +186,12 @@ fn chunks_subdivs_system(
             let subdiv_reduce =
                 (closest_camera_dist / renderer.options.chunk_subdiv_half_life)
                 .log2().floor() as u32;
-            let total_subdivs = renderer.options.max_subdivs.saturating_sub(subdiv_reduce);
+            let mut total_subdivs = renderer.options.max_subdivs.saturating_sub(subdiv_reduce);
+
+            if total_subdivs < renderer.options.min_subdivs {
+                total_subdivs = renderer.options.min_subdivs;
+            }
+            
             let subdivs = total_subdivs.saturating_sub(chunkpath.len());
            
             if chunk.target_subdivs != subdivs {
