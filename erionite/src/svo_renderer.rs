@@ -1,12 +1,12 @@
 mod chunk_svo;
-use std::{ops::Range, sync::Arc};
+use std::sync::Arc;
 
 use chunk_svo::*;
 
 use ordered_float::OrderedFloat;
 use bevy::{ecs::system::EntityCommands, prelude::*, render::primitives::Aabb, tasks::{block_on, AsyncComputeTaskPool, Task}};
 use svo::{mesh_generation::marching_cubes, CellPath};
-use utils::{AabbExt, DAabb, RangeExt};
+use utils::{AabbExt, DAabb};
 
 use crate::svo_provider::SvoProviderComponent;
 
@@ -37,15 +37,14 @@ pub struct SvoRendererBundle {
 }
 
 pub struct SvoRendererComponentOptions {
-    pub total_subdivs: Range<u32>,
+    pub max_subdivs: u32,
+
     /// Chunks with more subdivs are splitted
     pub chunk_split_subdivs: u32,
     /// Chunks with less subdivs are merged
     pub chunk_merge_subdivs: u32,
 
-    /// start is the camera distance at which the chunk should have max_subdivs
-    /// end is the distance for lowest res
-    pub chunk_subdiv_distances: Range<f64>,
+    pub chunk_subdiv_half_life: f64,
 
     pub root_aabb: DAabb,
 
@@ -109,6 +108,14 @@ impl ChunkComponent {
             should_update_mesh: false,
         }
     }
+
+    pub fn is_generating(&self) -> bool {
+        self.chunk_request_task.is_some()
+    }
+
+    pub fn is_generating_mesh(&self) -> bool {
+        self.mesh_task.is_some()
+    }
 }
 
 fn new_renderer_system(
@@ -168,22 +175,18 @@ fn chunks_subdivs_system(
             };
             let aabb = chunkpath.get_aabb(renderer.options.root_aabb);
 
-            let Some(closest_camera_dist) = relative_camera_poses.iter()
+            let Some(closest_camera_dist_2) = relative_camera_poses.iter()
                 .map(Vec3::as_dvec3)
                 .map(|campos| aabb.closest_point(campos).distance_squared(campos))
                 .min_by_key(|&d| OrderedFloat(d))
             else { continue };
-            let closest_camera_dist = closest_camera_dist.sqrt();
+            let closest_camera_dist = closest_camera_dist_2.sqrt();
 
-            let dists = &renderer.options.chunk_subdiv_distances;
-            let subdivs_range = renderer.options.total_subdivs.range_map(|&x| f64::from(x));
-            // 0. is minimum 1. is maximum subdivs
-            let subdiv_proportion = (
-                dists.clamped(closest_camera_dist) - dists.start
-            ) / dists.extent();
-            let subdiv_proportion = 1. - subdiv_proportion;
-            let subdivs = subdivs_range.extent() * subdiv_proportion + subdivs_range.start;
-            let subdivs = (subdivs.round() as u32).saturating_sub(chunkpath.depth());
+            let subdiv_reduce =
+                (closest_camera_dist / renderer.options.chunk_subdiv_half_life)
+                .log2().floor() as u32;
+            let total_subdivs = renderer.options.max_subdivs.saturating_sub(subdiv_reduce);
+            let subdivs = total_subdivs.saturating_sub(chunkpath.len());
            
             if chunk.target_subdivs != subdivs {
                 chunk.should_update_data = true;

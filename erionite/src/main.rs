@@ -70,13 +70,13 @@ fn main() {
 pub struct Cam {
     pub entity: Option<Entity>,
     pub angle: Vec2,
-    pub local_angle: Vec2,
+    pub local_angle: Quat,
     pub distance: f32,
 }
 
 impl Cam {
     fn reset_dist(&mut self) {
-        self.distance = 10000.;
+        self.distance = 20_000.;
     }
 }
 
@@ -85,7 +85,7 @@ impl FromWorld for Cam {
         let mut this = Self {
             entity: None,
             angle: Vec2::ZERO,
-            local_angle: Vec2::ZERO,
+            local_angle: default(),
             distance: 0.,
         };
         this.reset_dist();
@@ -112,11 +112,12 @@ fn setup(
     commands.spawn(SvoRendererBundle {
         transform: TransformBundle::default(),
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
-            total_subdivs: 4..10,
+            max_subdivs: 12,
+            chunk_subdiv_half_life: 100.,
+
             chunk_split_subdivs: 7,
             chunk_merge_subdivs: 5,
 
-            chunk_subdiv_distances: 0.0..20_000.0,
             root_aabb: aabb,
             on_new_chunk: Some(Box::new(move |mut commands: EntityCommands<'_>| {
                 commands.insert(mat.clone());
@@ -207,10 +208,18 @@ fn update_debug_text(
     let mut chunk_count = 0;
     let mut chunks_list = String::new();
     for (chunk, visible) in &chunks {
+        chunk_count += 1;
+        chunks_list += &format!("[{chunk_count:02}] {:?} @ {}", chunk.path, chunk.target_subdivs);
         if visible.get() {
-            chunk_count += 1;
-            chunks_list += &format!("[{chunk_count:02}] {:?} @ {}\n", chunk.path, chunk.target_subdivs);
+            chunks_list += " [visible]"
         }
+        if chunk.is_generating() {
+            chunks_list += " [generating]"
+        }
+        if chunk.is_generating_mesh() {
+            chunks_list += " [mesh generating]"
+        }
+        chunks_list.push('\n');
     }
 
     let mut debug_text = debug_text.single_mut();
@@ -245,7 +254,7 @@ fn camera(
         camera.distance += 2000.;
     }
     if mouse_input.pressed(MouseButton::Left) {
-        camera.local_angle = Vec2::ZERO;
+        camera.local_angle = default();
         for me in mouse_move_events.read() {
             camera.angle.y -= me.delta.y / 120.;
             camera.angle.x -= me.delta.x / 120.;
@@ -254,8 +263,8 @@ fn camera(
     }
     if mouse_input.pressed(MouseButton::Right) {
         for me in mouse_move_events.read() {
-            camera.local_angle.y -= me.delta.y / 120.;
-            camera.local_angle.x -= me.delta.x / 120.;
+            camera.local_angle *= Quat::from_rotation_y(me.delta.x / 240.);
+            camera.local_angle *= Quat::from_rotation_x(me.delta.y / 240.);
         }
     }
     if kb_input.just_pressed(KeyCode::KeyR) {
@@ -267,5 +276,5 @@ fn camera(
         Quat::from_rotation_x(camera.angle.y) *
         (Vec3::new(0., 0., 1.) * camera.distance);
     trans.look_at(Vec3::ZERO, Vec3::Y);
-    trans.rotate_local(Quat::from_euler(EulerRot::XYZ, camera.local_angle.x, camera.local_angle.y, 0.))
+    trans.rotate_local(camera.local_angle);
 }

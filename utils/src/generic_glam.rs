@@ -76,7 +76,7 @@ pub trait Vec3Ext<T: Num + Copy>
 {
     fn new(x: T, y: T, z: T) -> Self;
     fn from_array(a: [T; 3]) -> Self {
-        Self::new(a[0], a[1], a[1])
+        Self::new(a[0], a[1], a[2])
     }
     fn zero() -> Self {
         Self::new(T::zero(), T::zero(), T::zero())
