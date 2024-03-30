@@ -41,14 +41,14 @@ impl CellPath {
     }
 
     pub fn push(&mut self, v: u3) {
-        assert!(self.capacity() > self.len());
+        debug_assert!(self.capacity() > self.len());
 
         self.0 <<= 3;
         self.0 |= CellPathInner::from(v.value());
     }
 
     pub fn push_back(&mut self, v: u3) {
-        assert!(self.capacity() > self.len());
+        debug_assert!(self.capacity() > self.len());
 
         let marker_bit = CellPathInner::BITS - self.0.leading_zeros() - 1;
         // let x = marker_bit - 3;
@@ -116,7 +116,7 @@ impl CellPath {
     }
 
     pub fn neighbor(self, dx: i8, dy: i8, dz: i8) -> Option<Self> {
-        assert!(
+        debug_assert!(
             dx >= -1 && dx <= 1 &&
             dy >= -1 && dy <= 1 &&
             dz >= -1 && dz <= 1
@@ -203,7 +203,7 @@ impl CellPath {
     /// Panics if [depth] is higher than [len](Self::len)
     /// the exact inverse of [reparent]
     pub fn take_depth(&self, depth: u32) -> Self {
-        assert!(depth <= self.len());
+        debug_assert!(depth <= self.len());
         let to_remove = self.len() - depth;
         Self(self.0 >> (3 * to_remove))
     }
@@ -213,7 +213,7 @@ impl CellPath {
     /// Panics if [depth_to_remove] is higher than [len](Self::len)
     /// the inverse operation of [take_depth]
     pub fn reparent(self, depth_to_remove: u32) -> Self {
-        assert!(depth_to_remove <= self.len());
+        debug_assert!(depth_to_remove <= self.len());
         // mask of used-bits for the original path
         let full_mask = 1 << (self.len() * 3) - 1;
         let new_mask = full_mask >> depth_to_remove;
@@ -224,7 +224,7 @@ impl CellPath {
     }
 
     pub fn extended(self, other: Self) -> Self {
-        assert!(Self::MAX_CAPACITY > self.len() + other.len());
+        debug_assert!(Self::MAX_CAPACITY > self.len() + other.len());
         Self((self.0 << (other.len() * 3)) | other.index())
     }
 }

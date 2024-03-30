@@ -9,6 +9,7 @@ pub struct EveryCubes<T: GlamFloat> {
 impl<T: GlamFloat> Iterator for EveryCubes<T> {
     type Item = T::Vec3;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.current.z() > self.aabb.max().z() {
             return None;
@@ -30,6 +31,7 @@ impl<T: GlamFloat> Iterator for EveryCubes<T> {
     }
 }
 
+#[inline]
 pub fn every_cubes<T: GlamFloat>(aabb: T::Aabb3d, cube_size: T::Vec3) -> EveryCubes<T> {
     EveryCubes {
         aabb, cube_size,
