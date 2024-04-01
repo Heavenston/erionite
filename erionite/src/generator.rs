@@ -95,7 +95,8 @@ impl Generator for PlanetGenerator {
             svo::SdfSample { dist, material }
         }, subdivs, aabb);
 
-        svo.simplify();
+        let rs = svo.simplify();
+        log::trace!("Simplified svo: {rs}");
         svo
     }
 }

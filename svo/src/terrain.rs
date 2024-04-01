@@ -1,3 +1,5 @@
+use num_traits::Float;
+
 use super::*;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -93,7 +95,8 @@ impl MergeableData for TerrainCellData {
         _this: &TerrainCellData,
         d: [&Self; 8]
     ) -> bool {
-        Self::density_delta(d) <= 0.01
+        d.iter().map(|c| c.kind).all_equal() &&
+        Self::average_distance(d) > 10.
     }
 
     fn merge(
