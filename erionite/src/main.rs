@@ -251,15 +251,22 @@ fn camera(
 
     let mut trans = transforms.get_mut(entity).unwrap();
 
+    camera.distance -= 2000.;
     for me in mouse_wheel_events.read() {
-        camera.distance -= 2000.;
         if me.y < 0. {
             camera.distance *= 1.1;
         } else if me.y > 0. {
             camera.distance /= 1.1;
         }
-        camera.distance += 2000.;
     }
+    if kb_input.just_pressed(KeyCode::ArrowUp) {
+        camera.distance /= 1.1;
+    }
+    if kb_input.just_pressed(KeyCode::ArrowDown) {
+        camera.distance *= 1.1;
+    }
+    camera.distance += 2000.;
+
     if mouse_input.pressed(MouseButton::Left) {
         camera.local_angle = default();
         for me in mouse_move_events.read() {
