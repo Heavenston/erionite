@@ -3,13 +3,15 @@
 
 mod generator;
 mod svo_renderer;
+use svo_renderer::{ChunkComponent, SvoRendererBundle, SvoRendererComponent, SvoRendererComponentOptions};
 mod svo_provider;
+use svo_provider::generator_svo_provider;
+
+use std::f32::consts::*;
 
 use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, prelude::*};
-use svo_provider::generator_svo_provider;
-use svo_renderer::{ChunkComponent, SvoRendererBundle, SvoRendererComponent, SvoRendererComponentOptions};
 use utils::DAabb;
-use std::f32::consts::*;
+use bevy_rapier3d::prelude::*;
 
 fn setup_logger() -> Result<(), Box<dyn std::error::Error>> {
     use fern::colors::{ ColoredLevelConfig, Color };
@@ -53,8 +55,12 @@ fn main() {
     App::new()
         .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
         .add_plugins(bevy::diagnostic::LogDiagnosticsPlugin::default())
+
+        .add_plugins(RapierDebugRenderPlugin::default())
+
         .add_plugins((
             DefaultPlugins.build().disable::<bevy::log::LogPlugin>(),
+            RapierPhysicsPlugin::<NoUserData>::default(),
             svo_renderer::SvoRendererPlugin::default()
         ))
 

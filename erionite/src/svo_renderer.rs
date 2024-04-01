@@ -5,6 +5,7 @@ use chunk_svo::*;
 
 use ordered_float::OrderedFloat;
 use bevy::{ecs::system::EntityCommands, prelude::*, render::primitives::Aabb, tasks::{block_on, AsyncComputeTaskPool, Task}};
+use bevy_rapier3d::prelude::*;
 use svo::{mesh_generation::marching_cubes, CellPath};
 use utils::{AabbExt, DAabb};
 
@@ -75,21 +76,23 @@ impl SvoRendererComponent {
     }
 }
 
-#[derive(Component)]
+#[derive(Default, Component)]
 pub struct ChunkComponent {
     pub path: svo::CellPath,
     pub target_subdivs: u32,
 
-    /// Subdivs of the *last requested* data
-    data_subdivs: u32,
-    data: Option<Arc<svo::TerrainCell>>,
-    chunk_request_task: Option<Task<Arc<svo::TerrainCell>>>,
-    mesh_task: Option<Task<Mesh>>,
-
-    /// If true the data should be requested
     should_update_data: bool,
-    /// If true the mesh should be recomputed
+    data_subdivs: u32,
+    data_task: Option<Task<Arc<svo::TerrainCell>>>,
+    data: Option<Arc<svo::TerrainCell>>,
+
     should_update_mesh: bool,
+    mesh_subdivs: u32,
+    mesh_task: Option<Task<Option<Mesh>>>,
+
+    should_update_collider: bool,
+    collider_subdivs: u32,
+    collider_task: Option<Task<Option<Collider>>>,
 }
 
 impl ChunkComponent {
@@ -97,25 +100,20 @@ impl ChunkComponent {
         Self {
             path,
 
-            target_subdivs: 0,
-            data_subdivs: 0,
-
-            data: None,
-
-            chunk_request_task: None,
-            mesh_task: None,
-
-            should_update_data: false,
-            should_update_mesh: false,
+            ..default()
         }
     }
 
     pub fn is_generating(&self) -> bool {
-        self.chunk_request_task.is_some()
+        self.data_task.is_some()
     }
 
     pub fn is_generating_mesh(&self) -> bool {
         self.mesh_task.is_some()
+    }
+
+    pub fn is_generating_collider(&self) -> bool {
+        self.collider_task.is_some()
     }
 }
 
@@ -331,28 +329,31 @@ fn chunk_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
 
-    mut chunks: Query<(Entity, &mut ChunkComponent, &Parent)>,
+    mut chunks: Query<(Entity, &mut ChunkComponent, Option<&Handle<Mesh>>, &Parent)>,
     mut svo_renders: Query<(&mut SvoRendererComponent, &mut SvoProviderComponent)>,
 ) {
-    for (chunk_entitiy, mut chunk, parent) in chunks.iter_mut() {
+    let task_pool = AsyncComputeTaskPool::get();
+    for (chunk_entitiy, mut chunk, mesh, parent) in chunks.iter_mut() {
         let Ok((renderer, mut provider)) = svo_renders.get_mut(parent.get())
         else { continue; };
 
         let actual_subdivs = renderer.options.chunk_split_subdivs
             .min(chunk.target_subdivs);
+        // If the mesh is changed during this system this variable is updated
+        // as the actual entitie's component isn't updated until next run
+        let mut current_mesh = mesh.cloned();
 
-        if chunk.should_update_data || actual_subdivs != chunk.data_subdivs {
-            chunk.chunk_request_task = Some(
-                provider.request_chunk(
-                    chunk.path,
-                    actual_subdivs
-                )
-            );
-            chunk.data_subdivs = actual_subdivs;
+        if chunk.should_update_data {
             chunk.should_update_data = false;
+
+            chunk.data_task = Some(provider.request_chunk(
+                chunk.path,
+                actual_subdivs
+            ));
+            chunk.data_subdivs = actual_subdivs;
         }
 
-        if let Some(task) = chunk.chunk_request_task
+        if let Some(task) = chunk.data_task
             .take_if(|task| task.is_finished())
         {
             chunk.data = Some(block_on(task));
@@ -363,27 +364,70 @@ fn chunk_system(
             chunk.should_update_mesh.then_some(&chunk.data).cloned().flatten()
         {
             chunk.should_update_mesh = false;
+            chunk.mesh_subdivs = chunk.data_subdivs;
 
             let chunkpath = chunk.path;
             let root_aabb = renderer.options.root_aabb;
             let subdivs = actual_subdivs;
-            chunk.mesh_task = Some(AsyncComputeTaskPool::get().spawn(async move {
-                let mut out = marching_cubes::Out::new(false);
+            chunk.mesh_task = Some(task_pool.spawn(async move {
+                let mut out = marching_cubes::Out::new(true);
                 log::trace!("Rendering mesh...");
 
                 marching_cubes::run(
                     &mut out, chunkpath, &*data, root_aabb.into(), subdivs
                 );
+
+                if out.vertices.len() == 0 {
+                    return None;
+                }
+                
+                let m = out.into_mesh();
                 log::trace!("Finished mesh");
-                out.into_mesh()
+
+                Some(m)
             }));
         }
 
         if let Some(task) = chunk.mesh_task
             .take_if(|task| task.is_finished())
         {
-            let new_mesh = meshes.add(block_on(task));
-            commands.entity(chunk_entitiy).insert(new_mesh);
+            if let Some(new_mesh) = block_on(task) {
+                let new_mesh = meshes.add(new_mesh);
+                commands.entity(chunk_entitiy).insert(new_mesh.clone());
+                current_mesh = Some(new_mesh);
+                
+                chunk.should_update_collider = true;
+            }
+            else {
+                commands.entity(chunk_entitiy).remove::<Handle<Mesh>>();
+            }
+        }
+
+        if let Some(mesh_for_collider) = chunk.should_update_collider
+            .then_some(current_mesh).flatten()
+            .and_then(|handle| meshes.get(handle)).cloned()
+        {
+            chunk.collider_subdivs = chunk.mesh_subdivs;
+            let subdivs = chunk.mesh_subdivs + chunk.path.len();
+            let target = renderer.options.max_subdivs;
+            chunk.collider_task = Some(task_pool.spawn(async move {
+                if subdivs != target {
+                    return None;
+                }
+                Collider::from_bevy_mesh(
+                    &mesh_for_collider, &ComputedColliderShape::TriMesh
+                )
+            }));
+        }
+
+        if let Some(collider) = chunk.collider_task
+            .take_if(|task| task.is_finished()) {
+            if let Some(collider) = block_on(collider) {
+                commands.entity(chunk_entitiy).insert(collider);
+            }
+            else {
+                commands.entity(chunk_entitiy).remove::<Collider>();
+            }
         }
     }
 }
