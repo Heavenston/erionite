@@ -1,5 +1,5 @@
 mod aabb;
-use std::{ops::{Add, Range, Sub}, process::Output};
+use std::ops::{Add, Range, Sub};
 
 pub use aabb::*;
 mod every_cubes;
@@ -7,22 +7,26 @@ pub use every_cubes::*;
 mod generic_glam;
 pub use generic_glam::*;
 
-use bevy_math::{bounding::Aabb3d, BVec3, Vec3};
-use num_traits::Num;
+use bevy_math::{BVec3, UVec3};
 
-pub trait AsBVecExt {
-    type BVec;
-    fn as_bvec(&self) -> Self::BVec;
+pub trait AsVecExt {
+    fn as_bvec(&self) -> BVec3;
+    fn as_uvec(&self) -> UVec3;
 }
 
-impl AsBVecExt for arbitrary_int::u3 {
-    type BVec = BVec3;
-    
-    fn as_bvec(&self) -> Self::BVec {
+impl AsVecExt for arbitrary_int::u3 {
+    fn as_bvec(&self) -> BVec3 {
         BVec3::new(
             self.value() & 0b001 != 0,
             self.value() & 0b010 != 0,
             self.value() & 0b100 != 0,
+        )
+    }
+    fn as_uvec(&self) -> UVec3 {
+        UVec3::new(
+            if self.value() & 0b001 != 0 { 1 } else { 0 },
+            if self.value() & 0b010 != 0 { 1 } else { 0 },
+            if self.value() & 0b100 != 0 { 1 } else { 0 },
         )
     }
 }
