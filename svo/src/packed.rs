@@ -293,7 +293,9 @@ impl<D: Data> PackedCell<D> {
     pub fn update_on_path(&mut self, path: CellPath)
         where D: AggregateData
     {
-        self.update_cell(path);
+        if path.len() < self.depth() {
+            self.update_cell(path);
+        }
         path.parents().for_each(|parent| self.update_cell(parent));
     }
 

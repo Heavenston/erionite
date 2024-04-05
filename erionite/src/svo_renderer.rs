@@ -380,6 +380,7 @@ fn chunk_system(
                 );
 
                 if out.vertices.len() == 0 {
+                    log::trace!("Empty mesh");
                     return None;
                 }
                 
