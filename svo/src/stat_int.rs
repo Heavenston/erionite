@@ -38,14 +38,10 @@ impl<T: Default + Debug + PrimInt> crate::MergeableData for StatInt<T> {
     }
 
     fn merge(
-        this: InnerStatInt<T>,
+        _this: InnerStatInt<T>,
         children: [Self; 8]
-    ) -> Option<Self> {
-        if !Self::can_merge(&this, children.each_ref()) {
-            return None;
-        }
-
-        Some(Self(children[0].0))
+    ) -> Self {
+        Self(children[0].0)
     }
 }
 

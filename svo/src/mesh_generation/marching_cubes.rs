@@ -492,17 +492,19 @@ pub fn run(
     for current in utils::every_cubes::<f32>(aabb, cube_size) {
         let vertices = VERTICES.map(|d| current + d * cube_size);
         let samples = vertices
-            .map(|c|
-                root_cell.sample::<f32>(
-                    (c - root_aabb.min) / root_aabb.size(),
-                    u32::MAX
-                )
-                .map(|(_, x)| (
+            .map(|c| {
+                let x = root_cell.follow_path(
+                    CellPath::in_unit_cube::<f32>(
+                        depth,
+                        (c - root_aabb.min) / root_aabb.size(),
+                    ).expect("should be in unit cube"),
+                ).1;
+
+                (
                     x.data().into_inner().distance,
                     x.data().into_inner().kind
-                ))
-                .unwrap_or((0f32, TerrainCellKind::Air))
-            );
+                )
+            });
 
         kernel(
             &mut state, samples, vertices

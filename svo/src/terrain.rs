@@ -1,5 +1,3 @@
-use num_traits::Float;
-
 use super::*;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -101,12 +99,9 @@ impl MergeableData for TerrainCellData {
 
     fn merge(
         this: Self::Internal,
-        children: [Self; 8]
-    ) -> Option<Self> {
-        if !Self::can_merge(&this, children.each_ref()) {
-            return None;
-        }
-        Some(this)
+        _children: [Self; 8]
+    ) -> Self {
+        this
     }
 }
 

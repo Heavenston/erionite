@@ -35,14 +35,10 @@ impl crate::MergeableData for StatBool {
     }
 
     fn merge(
-        this: InnerStatBool,
+        _this: InnerStatBool,
         children: [Self; 8]
-    ) -> Option<Self> {
-        if !Self::can_merge(&this, children.each_ref()) {
-            return None;
-        }
-
-        Some(Self(children[0].0))
+    ) -> Self {
+        Self(children[0].0)
     }
 }
 

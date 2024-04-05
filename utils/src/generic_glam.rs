@@ -1,4 +1,4 @@
-use bevy_math::{bounding::Aabb3d, BVec3, DVec3, Vec3};
+use bevy_math::{bounding::Aabb3d, DVec3, Vec3};
 use num_traits::{Float, Num, NumAssign};
 
 use crate::DAabb;
