@@ -131,9 +131,12 @@ fn setup(
             }) as Box<_>),
         }),
         svo_provider: generator_svo_provider::GeneratorSvoProvider::new(
-            generator::PlanetGenerator {
+            // generator::PlanetGenerator {
+            //     radius,
+            //     seed: 5,
+            // },
+            generator::SphereGenerator {
                 radius,
-                seed: 5,
             },
             aabb
         ).into(),

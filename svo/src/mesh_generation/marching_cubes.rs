@@ -503,16 +503,12 @@ pub fn run(
         let samples = vertices
             .map(|c| {
                 CellPath::in_unit_cube::<f32>(
-                    depth+1,
-                    ((c - root_aabb.min) / root_aabb.size())
-                        .clamped(Vec3::ZERO, Vec3::ONE),
+                    depth+chunk.depth(),
+                    (c - root_aabb.min) / root_aabb.size()
                 )
                     .map(|path| root_cell.follow_path(path).1)
                     .map(|x| (x.data().distance, x.data().kind))
-                    .unwrap_or((
-                        0.,
-                        TerrainCellKind::Invalid,
-                    ))
+                    .unwrap_or((0., TerrainCellKind::Invalid))
             });
 
         kernel(

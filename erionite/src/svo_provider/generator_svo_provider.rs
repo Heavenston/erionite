@@ -73,6 +73,7 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
                 );
                 lock = data.lock().unwrap();
                 *lock.root_svo.follow_path_and_split(path).1 = result;
+                lock.root_svo.update_on_path(path);
 
                 *lock.generated.follow_path_mut(path).1 = svo::LeafCell {
                     data: svo::StatBool(false),
