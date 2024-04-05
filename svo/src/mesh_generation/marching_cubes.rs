@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use bevy_math::{bounding::Aabb3d, Vec3, Vec4};
 use bevy_render::{color::Color, mesh::{self, Mesh}, render_asset::RenderAssetUsages};
 use ordered_float::OrderedFloat;
-use utils::AabbExt as _;
+use utils::{AabbExt as _, Vec3Ext};
 
 use crate::{self as svo, TerrainCellKind, CellPath};
 
@@ -320,6 +320,7 @@ const TRIANGULATIONS: [[i8; 15]; 256] = [
 #[derive(Debug, Default)]
 pub struct Out {
     pub indexed: bool,
+    pub smooth: bool,
 
     pub indices: Vec<u32>,
     pub vertices: Vec<Vec3>,
@@ -328,9 +329,10 @@ pub struct Out {
 }
 
 impl Out {
-    pub fn new(indexed: bool) -> Self {
+    pub fn new(indexed: bool, smooth: bool) -> Self {
         Self {
             indexed,
+            smooth,
             ..Default::default()
         }
     }
@@ -386,7 +388,7 @@ impl<'a> State<'a> {
     }
 
     pub fn add_vertex(&mut self, pos: Vec3) {
-        if self.out.indexed {
+        if self.out.indexed && self.out.smooth {
             let key = (
                 [pos.x, pos.y, pos.z].map(OrderedFloat),
                 [self.color.r(), self.color.g(), self.color.b(), self.color.a()].map(OrderedFloat)
@@ -407,6 +409,13 @@ impl<'a> State<'a> {
             self.out.normals[entry.index] =
                 entry.sum_normal / entry.count;
             self.out.indices.push(entry.index.try_into().unwrap());
+        }
+        else if self.out.indexed && !self.out.smooth {
+            let index = self.out.indices.len();
+            self.out.normals.push(self.normal);
+            self.out.colors.push(self.color.rgba_to_vec4());
+            self.out.vertices.push(pos);
+            self.out.indices.push(index.try_into().unwrap());
         }
         else {
             self.out.normals.push(self.normal);
@@ -493,17 +502,17 @@ pub fn run(
         let vertices = VERTICES.map(|d| current + d * cube_size);
         let samples = vertices
             .map(|c| {
-                let x = root_cell.follow_path(
-                    CellPath::in_unit_cube::<f32>(
-                        depth,
-                        (c - root_aabb.min) / root_aabb.size(),
-                    ).expect("should be in unit cube"),
-                ).1;
-
-                (
-                    x.data().into_inner().distance,
-                    x.data().into_inner().kind
+                CellPath::in_unit_cube::<f32>(
+                    depth+1,
+                    ((c - root_aabb.min) / root_aabb.size())
+                        .clamped(Vec3::ZERO, Vec3::ONE),
                 )
+                    .map(|path| root_cell.follow_path(path).1)
+                    .map(|x| (x.data().distance, x.data().kind))
+                    .unwrap_or((
+                        0.,
+                        TerrainCellKind::Invalid,
+                    ))
             });
 
         kernel(

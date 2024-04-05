@@ -81,6 +81,19 @@ pub trait Vec3Ext<T: Num + Copy>
     fn zero() -> Self {
         Self::new(T::zero(), T::zero(), T::zero())
     }
+    fn one() -> Self {
+        Self::new(T::one(), T::one(), T::one())
+    }
+
+    fn clamped(&self, min: Self, max: Self) -> Self
+        where T: PartialOrd<T>
+    {
+        Self::new(
+            num_traits::clamp(self.x(), min.x(), max.x()),
+            num_traits::clamp(self.y(), min.y(), max.y()),
+            num_traits::clamp(self.z(), min.z(), max.z()),
+        )
+    }
 
     fn x(&self) -> T;
     fn y(&self) -> T;

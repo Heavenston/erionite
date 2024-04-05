@@ -43,7 +43,7 @@ impl Generator for PlanetGenerator {
 
         let heigth_noise = HybridMulti::<Perlin>::new(r.gen())
             .set_frequency(1.)
-            .set_octaves(10);
+            .set_octaves(5);
         let heigth_noise = ScalePoint::new(heigth_noise)
             .set_scale(1. / 70.);
         let heigth_noise = ScaleBias::new(heigth_noise)
@@ -58,7 +58,7 @@ impl Generator for PlanetGenerator {
 
         let disp_noise = HybridMulti::<Perlin>::new(r.gen())
             .set_frequency(1.)
-            .set_octaves(20);
+            .set_octaves(5);
         let disp_noise = ScalePoint::new(disp_noise)
             .set_scale(1. / 50.);
 

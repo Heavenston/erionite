@@ -122,10 +122,9 @@ fn new_renderer_system(
     mut svo_renders: Query<(Entity, &mut SvoRendererComponent), Added<SvoRendererComponent>>,
 ) {
     for (entity, mut renderer) in &mut svo_renders {
-        if !renderer.chunks_svo.is_leaf() {
-            continue;
-        }
-        if renderer.chunks_svo.as_leaf().data.entity != Entity::PLACEHOLDER {
+        let svo::Cell::Leaf(chunk_leaf) = &renderer.chunks_svo
+        else { continue; };
+        if chunk_leaf.data.entity != Entity::PLACEHOLDER {
             continue;
         }
 
@@ -165,9 +164,9 @@ fn chunks_subdivs_system(
         let mut chunks_to_merge = vec![];
 
         for svo::SvoIterItem {
-            cell: chunkcell, path: chunkpath,
+            data: chunkdata, path: chunkpath,
         } in renderer.chunks_svo.iter() {
-            let Ok(mut chunk) = chunks.get_mut(chunkcell.data.entity)
+            let Ok(mut chunk) = chunks.get_mut(chunkdata.entity)
             else {
                 log::warn!("Stored chunk entity does not exist");
                 continue;
@@ -231,14 +230,17 @@ fn chunks_splitting_system(
 
             let mut on_new_chunk = renderer.options.on_new_chunk.take();
             let cell = renderer.chunks_svo.follow_path_mut(chunkpath).1;
-            if let Some(e) = cell.try_leaf_mut().map(|leaf| leaf.data.entity) {
-                commands.entity(e).despawn();
+            if let svo::Cell::Leaf(leaf) = cell {
+                commands.entity(leaf.data.entity).despawn();
             }
             cell.split();
 
             for child in CellPath::components() {
                 let child_path = chunkpath.with_push(child);
-                let child_cell = cell.as_inner_mut().get_child_mut(child).as_leaf_mut();
+                let child_cell = match cell {
+                    svo::Cell::Internal(i) => i,
+                    _ => unreachable!("Just splitted and chunk svo should never have packed cells"),
+                }.get_child_mut(child);
 
                 let chunk_entitiy = commands.spawn((
                     ChunkComponent::new(child_path),
@@ -246,7 +248,7 @@ fn chunks_splitting_system(
                     VisibilityBundle::default(),
                     Into::<Aabb>::into(child_path.get_aabb(root_aabb)),
                 )).set_parent(renderer_entity).id();
-                child_cell.data.entity = chunk_entitiy;
+                child_cell.data_mut().entity = chunk_entitiy;
                 if let Some(on_new_chunk) = &mut on_new_chunk {
                     on_new_chunk(commands.entity(chunk_entitiy));
                 }
@@ -268,15 +270,15 @@ fn chunks_splitting_system(
             // merged in previous iterations
             {
                 let (foundpath, cell) = renderer.chunks_svo.follow_path(chunkpath);
-                if foundpath != chunkpath || cell.is_inner() {
+                if foundpath != chunkpath || matches!(cell, svo::Cell::Leaf(_)) {
                     continue;
                 }
             }
 
             // check if merging would mean immediately splitting ('overcrowded' chunk)
             for (i, child) in new_chunk_path.children().into_iter().enumerate() {
-                let Some(cleaf) =
-                    renderer.chunks_svo.follow_path(child).1.try_leaf()
+                let svo::Cell::Leaf(cleaf) =
+                    renderer.chunks_svo.follow_path(child).1
                 // not a leaf = either its children will be merged later
                 // or merging would create an overcroweded chunk
                 else { continue 'merges; };
@@ -316,7 +318,7 @@ fn chunks_splitting_system(
         let dirty = provider.drain_dirty_chunks();
         for &c in &*dirty {
             for chunkcell in renderer.chunks_svo.follow_path(c).1.iter() {
-                let Ok(mut chunk) = chunks.get_mut(chunkcell.cell.data.entity)
+                let Ok(mut chunk) = chunks.get_mut(chunkcell.data.entity)
                 else {continue};
                 chunk.should_update_data = true;
             }
@@ -370,7 +372,7 @@ fn chunk_system(
             let root_aabb = renderer.options.root_aabb;
             let subdivs = actual_subdivs;
             chunk.mesh_task = Some(task_pool.spawn(async move {
-                let mut out = marching_cubes::Out::new(true);
+                let mut out = marching_cubes::Out::new(true, false);
                 log::trace!("Rendering mesh...");
 
                 marching_cubes::run(

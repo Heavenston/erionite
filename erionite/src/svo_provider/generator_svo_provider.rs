@@ -60,7 +60,7 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
                 let already_gen = fpath == path && match cell.data() {
                     Either::Left(l) => l.all,
                     Either::Right(r) => r.0,
-                } && cell.depth() >= subdivs as usize;
+                } && cell.depth() >= subdivs;
                 !already_gen
             };
             let mut lock;
@@ -72,12 +72,12 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
                     subdivs,
                 );
                 lock = data.lock().unwrap();
-                *lock.root_svo.follow_path_and_split(path) = result;
+                *lock.root_svo.follow_path_and_split(path).1 = result;
 
                 *lock.generated.follow_path_mut(path).1 = svo::LeafCell {
                     data: svo::StatBool(false),
                 }.into();
-                *lock.generated.follow_path_and_split(path) = svo::Cell::new_with_depth(
+                *lock.generated.follow_path_and_split(path).1 = svo::Cell::new_with_depth(
                     subdivs,
                     svo::StatBool(true)
                 );
