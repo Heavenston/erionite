@@ -21,7 +21,3 @@ utils = { version = "0.1.0", path = "../utils" }
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }
-
-[[bench]]
-name = "sample_benchmark"
-harness = false
