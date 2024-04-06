@@ -108,3 +108,4 @@ impl MergeableData for TerrainCellData {
 pub type TerrainCell = Cell<TerrainCellData>;
 pub type TerrainInternalCell = InternalCell<TerrainCellData>;
 pub type TerrainLeafCell = LeafCell<TerrainCellData>;
+pub type TerrainPackedCell = PackedCell<TerrainCellData>;

@@ -1,7 +1,7 @@
 use bevy_math::DVec3;
 use utils::DAabb;
 
-use crate::{self as svo, PackedCell};
+use crate::{self as svo};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SdfSample {
@@ -15,18 +15,18 @@ pub fn svo_from_sdf<F>(
 ) -> svo::TerrainCell
     where F: Fn(&DVec3) -> SdfSample + Send + Sync
 {
-    let mut data = PackedCell::<svo::TerrainCellData>::new_default(max_subdiv);
+    let mut packed_data = svo::TerrainPackedCell::new_default(max_subdiv);
 
     let width = 2f64.powi(max_subdiv as i32);
     for (index, pos, _) in svo::PackedIndexIterator::new(max_subdiv) {
         let npos = aabb.position + (pos.as_dvec3() / width) * aabb.size;
         let s = sample(&npos);
-        data.leaf_level_mut().raw_array_mut()[index] = svo::TerrainCellData {
+        packed_data.leaf_level_mut().raw_array_mut()[index] =  svo::TerrainCellData {
             kind: s.material,
             distance: s.dist as f32,
         };
     }
 
-    data.update_all();
-    data.into()
+    packed_data.update_all();
+    packed_data.into()
 }

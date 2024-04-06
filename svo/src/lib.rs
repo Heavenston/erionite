@@ -104,7 +104,7 @@ impl<D: Data> Into<Cell<D>> for InternalCell<D> {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Default, Debug, Clone)]
 pub struct LeafCell<D: Data> {
     pub data: D,
 }
@@ -207,28 +207,28 @@ impl<D: Data> Cell<D> {
     /// Follows the given path, until a leaf or packed cell is reached
     pub fn follow_path(&self, mut path: CellPath) -> (CellPath, &Self) {
         let Some(x) = path.pop()
-            else { return (path, self); };
+            else { return (CellPath::new(), self); };
 
         match self {
             Cell::Internal(i) => {
                 let (p, s) = i.get_child(x).follow_path(path);
                 (p.with_push_back(x), s)
             },
-            Cell::Leaf(_) | Cell::Packed(_) => (path, self),
+            Cell::Leaf(_) | Cell::Packed(_) => (CellPath::new(), self),
         }
     }
 
     /// mut version of [follow_path](Self::follow_path)
     pub fn follow_path_mut(&mut self, mut path: CellPath) -> (CellPath, &mut Self) {
         let Some(x) = path.pop()
-            else { return (path, self); };
+            else { return (CellPath::new(), self); };
 
         match self {
             Cell::Internal(i) => {
                 let (p, s) = i.get_child_mut(x).follow_path_mut(path);
                 (p.with_push_back(x), s)
             },
-            Cell::Leaf(_) | Cell::Packed(_) => (path, self),
+            Cell::Leaf(_) | Cell::Packed(_) => (CellPath::new(), self),
         }
     }
 
@@ -245,9 +245,60 @@ impl<D: Data> Cell<D> {
 
         self.split();
         match self {
-            Cell::Leaf(_) => unreachable!("split should convert leafs to internals"),
-            Cell::Internal(i) => i.get_child_mut(child).follow_path_and_split(path),
-            Cell::Packed(_) => (path, self),
+            Cell::Leaf(_) =>
+                unreachable!("split should convert leafs to internals"),
+            Cell::Internal(i) =>
+                i.get_child_mut(child).follow_path_and_split(path),
+            Cell::Packed(_) =>
+                (path, self),
+        }
+    }
+
+    /// Like [follow_path] but does continue into packed cells
+    /// so only returns the acquired data
+    /// If path is deeper than available the rest of the path is ignored
+    pub fn get_path(&self, mut path: CellPath) -> EitherDataRef<D> {
+        let mut current = self;
+        loop {
+            match current {
+                Cell::Internal(i) => {
+                    let Some(comp) = path.pop()
+                    else { return current.data(); };
+
+                    current = i.get_child(comp);
+                },
+                Cell::Leaf(l) => {
+                    return Either::Right(&l.data);
+                },
+                Cell::Packed(p) => {
+                    return p.get(if path.len() > p.depth() {
+                        path.take(p.depth())
+                    } else {
+                        path
+                    });
+                },
+            }
+        }
+    }
+
+    /// mut version of [get_path]
+    pub fn get_path_mut(&mut self, mut path: CellPath) -> EitherDataMut<D> {
+        let mut current = self;
+        loop {
+            match current {
+                Cell::Internal(i) => {
+                    let Some(comp) = path.pop()
+                    else { return Either::Left(&mut i.data); };
+
+                    current = i.get_child_mut(comp);
+                },
+                Cell::Leaf(l) => {
+                    return Either::Right(&mut l.data);
+                },
+                Cell::Packed(p) => {
+                    return p.get_mut(path);
+                },
+            }
         }
     }
 

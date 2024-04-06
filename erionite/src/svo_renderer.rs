@@ -270,7 +270,7 @@ fn chunks_splitting_system(
             // merged in previous iterations
             {
                 let (foundpath, cell) = renderer.chunks_svo.follow_path(chunkpath);
-                if foundpath != chunkpath || matches!(cell, svo::Cell::Leaf(_)) {
+                if foundpath != chunkpath || !matches!(cell, svo::Cell::Leaf(_)) {
                     continue;
                 }
             }

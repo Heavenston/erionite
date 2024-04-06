@@ -15,7 +15,7 @@ impl<D> PackedCellLevel<D> {
     {
         Self {
             data: {
-                let size = 8u32.pow(depth) as usize;
+                let size = 8usize.pow(depth);
                 let mut vec = Vec::with_capacity(size);
                 for _ in 0..size.saturating_sub(1) {
                     vec.push(data.clone());

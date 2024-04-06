@@ -506,8 +506,8 @@ pub fn run(
                     depth+chunk.depth(),
                     (c - root_aabb.min) / root_aabb.size()
                 )
-                    .map(|path| root_cell.follow_path(path).1)
-                    .map(|x| (x.data().distance, x.data().kind))
+                    .map(|path| root_cell.get_path(path).into_inner())
+                    .map(|x| (x.distance, x.kind))
                     .unwrap_or((0., TerrainCellKind::Invalid))
             });
 
