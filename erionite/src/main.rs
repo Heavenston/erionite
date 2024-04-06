@@ -122,7 +122,7 @@ fn setup(
             min_subdivs: 4,
             chunk_subdiv_half_life: 100.,
 
-            chunk_split_subdivs: 7,
+            chunk_split_subdivs: 6,
             chunk_merge_subdivs: 5,
 
             root_aabb: aabb,
