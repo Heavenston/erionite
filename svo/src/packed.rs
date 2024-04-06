@@ -30,26 +30,8 @@ impl<D> PackedCellLevel<D> {
     }
 }
 
-fn level_cell_index(depth: u32, pos: UVec3) -> usize {
-    let width = 2u32.pow(depth);
-    debug_assert!(
-        pos.x <= width && pos.y <= width && pos.z <= width,
-        "Coordinates ({pos:?}) are out of range for depth {depth} (width is {width})"
-    );
-    (pos.x + width * pos.y + width.pow(2) * pos.z) as usize
-}
-
 fn path_index(path: CellPath) -> usize {
-    let mut pos = UVec3::new(0, 0, 0);
-    for comp in path {
-        pos *= 2;
-        pos += comp.as_uvec();
-    }
-    return level_cell_index(path.len(), pos);
-}
-
-fn level_width(depth: u32) -> u32 {
-    2u32.pow(depth)
+    return path.index().try_into().unwrap();
 }
 
 fn level_size(depth: u32) -> u32 {
@@ -70,22 +52,14 @@ pub fn path_to_depth_and_pos(cell_path: CellPath) -> (u32, UVec3) {
 /// in the order they are in memory.
 pub struct PackedIndexIterator {
     depth: u32,
-    coords: UVec3,
     index: usize,
-
-    path: [CellPath; 3],
 }
 
 impl PackedIndexIterator {
     pub fn new(depth: u32) -> Self {
         Self {
             depth,
-            coords: UVec3::splat(0),
             index: 0,
-            path: [(0..depth).fold(
-                CellPath::new(),
-                |path, _| path.with_push(u3::new(0b000))
-            ); 3],
         }
     }
 }
@@ -98,43 +72,10 @@ impl<'a> Iterator for PackedIndexIterator {
             return None;
         }
 
-        let current = (self.index, self.coords, self.path[0]);
-
-        let width = level_width(self.depth);
+        let path = CellPath::from_index(self.index as _, self.depth);
+        let current = (self.index, path.get_pos(), path);
 
         self.index += 1;
-
-        // 0 for X, 1 for Y, 2 for Z
-        let mut neighbor = 0;
-
-        self.coords.x += 1;
-        if self.coords.x == width {
-            self.coords.x = 0; self.coords.y += 1;
-            neighbor = 1;
-        }
-        if self.coords.y == width {
-            self.coords.y = 0; self.coords.z += 1;
-            neighbor = 2;
-        }
-        // z coords cannot overflow the width as we know index isn't at the end
-
-        match neighbor {
-            _ if self.index == level_size(self.depth) as usize => (),
-            0 => {
-                self.path[0] = self.path[0].neighbor(1, 0, 0).unwrap();
-            },
-            1 => {
-                self.path[1] = self.path[1].neighbor(0, 1, 0).unwrap();
-                self.path[0] = self.path[1];
-            },
-            2 => {
-                self.path[2] = self.path[2].neighbor(0, 0, 1).unwrap();
-                self.path[0] = self.path[2];
-                self.path[1] = self.path[2];
-            }
-
-            _ => unreachable!(),
-        }
 
         Some(current)
     }
@@ -160,20 +101,12 @@ impl<'a, D> PackedCellLevelRef<'a, D> {
         path_index(path)
     }
 
-    pub fn index_from_pos(&self, pos: UVec3) -> usize {
-        level_cell_index(self.depth, pos)
-    }
-
     pub fn raw_array(&self) -> &'a [D] {
         &self.level.data
     }
 
     pub fn get(&self, path: CellPath) -> &'a D {
         &self.level.data[self.index(path)]
-    }
-
-    pub fn get_from_pos(&self, pos: UVec3) -> &'a D {
-        &self.level.data[self.index_from_pos(pos)]
     }
 }
 
@@ -206,10 +139,6 @@ impl<'a, D> PackedCellLevelMut<'a, D> {
         path_index(path)
     }
 
-    pub fn index_from_pos(&self, pos: UVec3) -> usize {
-        level_cell_index(self.depth, pos)
-    }
-
     pub fn raw_array(&self) -> &[D] {
         &self.level.data
     }
@@ -224,14 +153,6 @@ impl<'a, D> PackedCellLevelMut<'a, D> {
 
     pub fn get_mut(&mut self, path: CellPath) -> &mut D {
         &mut self.level.data[self.index(path)]
-    }
-
-    pub fn get_from_pos(&self, pos: UVec3) -> &D {
-        &self.level.data[self.index_from_pos(pos)]
-    }
-
-    pub fn get_mut_from_pos(&mut self, pos: UVec3) -> &mut D {
-        &mut self.level.data[self.index_from_pos(pos)]
     }
 }
 

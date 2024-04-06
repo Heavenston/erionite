@@ -1,7 +1,7 @@
 use std::iter::FusedIterator;
 
 use arbitrary_int::*;
-use bevy_math::DVec3;
+use bevy_math::{DVec3, UVec3};
 use utils::{ AsVecExt, DAabb, GlamFloat, Vec3Ext };
 
 type CellPathInner = u128;
@@ -119,7 +119,7 @@ impl CellPath {
         std::iter::from_fn(move || { self = self.parent()?; Some(self) })
     }
 
-    pub fn get_aabb(self, mut root: DAabb) -> DAabb {
+    pub fn get_aabb(&self, mut root: DAabb) -> DAabb {
         for x in self {
             root.size /= 2.;
             root.position = DVec3::select(
@@ -128,6 +128,45 @@ impl CellPath {
             );
         }
         root
+    }
+
+    /// Get the position of the cell considering one unit per cell of the current
+    /// depth
+    /// # Example:
+    /// ```
+    /// use arbitrary_int::u3;
+    /// use bevy_math::UVec3;
+    /// use svo::CellPath;
+    ///
+    /// assert_eq!(CellPath::new().get_pos(), UVec3::new(0,0,0));
+    /// assert_eq!(
+    ///     CellPath::new()
+    ///         .with_push(u3::new(0b000))
+    ///         .get_pos(),
+    ///     UVec3::new(0,0,0),
+    /// );
+    /// assert_eq!(
+    ///     CellPath::new()
+    ///         .with_push(u3::new(0b011))
+    ///         .get_pos(),
+    ///     UVec3::new(1,1,0),
+    /// );
+    /// assert_eq!(
+    ///     CellPath::new()
+    ///         .with_push(u3::new(0b010))
+    ///         .with_push(u3::new(0b100))
+    ///         .get_pos(),
+    ///     UVec3::new(0,2,1),
+    /// );
+    /// ```
+    pub fn get_pos(&self) -> UVec3 {
+        let mut size = UVec3::splat(2u32.pow(self.depth()));
+        let mut result = UVec3::ZERO;
+        for x in self {
+            size /= 2;
+            result += size * x.as_uvec();
+        }
+        result
     }
 
     pub fn neighbor(self, dx: i8, dy: i8, dz: i8) -> Option<Self> {
@@ -175,7 +214,7 @@ impl CellPath {
     }
 
     /// Iterator over all neighbors of this path, excluding itself
-    pub fn neighbors(self) -> impl Iterator<Item = ((i8, i8, i8), Self)> {
+    pub fn neighbors(self) -> impl Iterator<Item = ((i8, i8, i8), Self)> + DoubleEndedIterator {
         (-1..=1).flat_map(move |x| (-1..=1)
             .flat_map(move |y| (-1..=1)
             .map(move |z| (x, y, z))))
@@ -197,7 +236,7 @@ impl CellPath {
     }
 
     /// Returns an iterator over all paths possible with the given depth
-    pub fn all_iter(depth: usize) -> impl Iterator<Item = Self> {
+    pub fn all_iter(depth: usize) -> impl Iterator<Item = Self> + DoubleEndedIterator {
         let sections = depth * 3;
         (0..(1 << sections)).map(move |i| Self(i | (1 << sections)))
     }
@@ -212,6 +251,14 @@ impl CellPath {
         let marker_bit = self.mark_bit_position();
 
         self.0 & !(CellPathInner::MAX << marker_bit)
+    }
+
+    pub fn from_index(index: CellPathInner, depth: u32) -> Self {
+        if depth*3 > Self::MAX_CAPACITY {
+            panic!("Depth higher than capacity");
+        }
+
+        Self(index | (1 << depth as CellPathInner * 3))
     }
 
     /// Return a new CellPath with only the first [depth] elements of self
@@ -296,6 +343,15 @@ impl IntoIterator for CellPath {
 
     fn into_iter(self) -> Self::IntoIter {
         CellPathIterator { path: self, }
+    }
+}
+
+impl IntoIterator for &CellPath {
+    type Item = u3;
+    type IntoIter = CellPathIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        CellPathIterator { path: *self, }
     }
 }
 

@@ -204,6 +204,10 @@ impl<D: Data> Cell<D> {
         self.iter_children_mut().for_each(|c| c.full_split(depth - 1));
     }
 
+    pub fn to_internal(&mut self) -> &mut InternalCell<D> {
+        todo!()
+    }
+
     /// Follows the given path, until a leaf or packed cell is reached
     pub fn follow_path(&self, mut path: CellPath) -> (CellPath, &Self) {
         let Some(x) = path.pop()
