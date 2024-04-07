@@ -28,6 +28,17 @@ impl<D> PackedCellLevel<D> {
             }
         }
     }
+
+    fn split_sub(&self, comp: u3) -> Self
+        where D: Clone
+    {
+        let sub_count = self.data.len() / 8;
+        let sub_i: usize = CellPath::new().with_push_back(comp).index().try_into().unwrap();
+
+        let range = sub_count*sub_i..sub_count*(sub_i+1);
+        let slice = self.data[range].iter().cloned().collect::<Box<[D]>>();
+        PackedCellLevel { data: slice }
+    }
 }
 
 fn path_index(path: CellPath) -> usize {
@@ -317,6 +328,38 @@ impl<D: Data> PackedCell<D> {
     /// If there is only one leaf the depth is 0
     pub fn depth(&self) -> u32 {
         self.levels.len() as u32
+    }
+
+    /// Splitts the given 
+    pub fn split(&self) -> [PackedCell<D>; 8] {
+        if self.depth() == 0 {
+            return [
+                self.clone(), self.clone(),
+                self.clone(), self.clone(),
+                self.clone(), self.clone(),
+                self.clone(), self.clone(),
+            ];
+        }
+
+        CellPath::components().map(|comp| {
+            let levels = self.levels.iter().skip(1)
+                .map(|level| level.split_sub(comp))
+                .collect_vec();
+            let leaf_level = self.leaf_level.split_sub(comp);
+
+            PackedCell {
+                levels: levels.into_boxed_slice(),
+                leaf_level,
+            }
+        })
+    }
+}
+
+impl<D> Default for PackedCell<D>
+    where D: Data
+{
+    fn default() -> Self {
+        Self::new_default(0)
     }
 }
 

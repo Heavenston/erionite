@@ -224,7 +224,7 @@ impl CellPath {
                 .map(|xx| ((x, y, z), xx)))
     }
 
-    pub fn components() -> [u3; 8] {
+    pub const fn components() -> [u3; 8] {
         [
             u3::new(0b000), u3::new(0b001), u3::new(0b010), u3::new(0b011),
             u3::new(0b100), u3::new(0b101), u3::new(0b110), u3::new(0b111),

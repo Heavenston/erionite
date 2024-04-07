@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 mod planet_generator;
 pub use planet_generator::*;
 mod sphere_generator;

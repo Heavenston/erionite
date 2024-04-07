@@ -62,24 +62,12 @@ impl<D: Data> InternalCell<D> {
         Arc::make_mut(&mut self.children[usize::from(pos.value())])
     }
 
-    pub fn new_full(data: D) -> Self
-        where D: AggregateData
-    {
-        let mut this = Self {
-            children: [
-                Arc::new(LeafCell::new(data.clone()).into()),
-                Arc::new(LeafCell::new(data.clone()).into()),
-                Arc::new(LeafCell::new(data.clone()).into()),
-                Arc::new(LeafCell::new(data.clone()).into()),
-                Arc::new(LeafCell::new(data.clone()).into()),
-                Arc::new(LeafCell::new(data.clone()).into()),
-                Arc::new(LeafCell::new(data.clone()).into()),
-                Arc::new(LeafCell::new(data.clone()).into()),
-            ],
-            data: Default::default(),
-        };
-        this.shallow_update();
-        this
+    pub fn new_full(children_data: D, data: D::Internal) -> Self {
+        Self {
+            children: [1,2,3,4,5,6,7,8]
+                .map(|_| Arc::new(LeafCell::new(children_data.clone()).into())),
+            data,
+        }
     }
 
     pub fn iter_children(&self) -> impl Iterator<Item = &Arc<Cell<D>>> {
@@ -190,7 +178,9 @@ impl<D: Data> Cell<D> {
     {
         let Some(data) = self.data_mut().right().map(std::mem::take)
         else { return false; };
-        *self = InternalCell::new_full(data).into();
+        let mut int = InternalCell::new_full(data, Default::default());
+        int.shallow_update();
+        *self = int.into();
         true
     }
 
@@ -204,8 +194,40 @@ impl<D: Data> Cell<D> {
         self.iter_children_mut().for_each(|c| c.full_split(depth - 1));
     }
 
-    pub fn to_internal(&mut self) -> &mut InternalCell<D> {
-        todo!()
+    /// Makes sure the current cell is an internal cell by depending on the cell's
+    /// kind:
+    /// - for internal cells, *nothing* is done.
+    /// - for leaf cells a new internal cell is created by using cloned version of
+    ///   this cell's data, and the internal cell data is set to the given data.
+    ///   The same is done for packed cells of depth = 0
+    /// - for packed cells, a new internal cell is created by using
+    ///   [PackedCell::split] for children, and the packedcell's root data is
+    ///   used as data.
+    pub fn to_internal(&mut self, data: D::Internal) -> &mut InternalCell<D> {
+        match self {
+            Cell::Internal(i) => return i,
+            Cell::Leaf(l) => {
+                *self = InternalCell::new_full(
+                    std::mem::take(&mut l.data),
+                    data,
+                ).into();
+            },
+            Cell::Packed(p) => {
+                let ndata = p.get(CellPath::new())
+                    .left()
+                    .cloned()
+                    .unwrap_or(data);
+                *self = InternalCell {
+                    children: std::mem::take(p).split()
+                        .map(|n| Arc::new(Into::<Cell<D>>::into(n))),
+                    data: ndata,
+                }.into();
+            },
+        }
+
+        let Cell::Internal(as_internal) = self
+        else { panic!("Just set"); };
+        as_internal
     }
 
     /// Follows the given path, until a leaf or packed cell is reached
@@ -236,26 +258,14 @@ impl<D: Data> Cell<D> {
         }
     }
 
-    /// Same as [follow_path_mut](Self::follow_path_mut) but also splits
-    /// any leaf nodes that it comes accross.
-    /// Note that the path may still not follow the full path if a packed cell
-    /// is reached (so, if the returned cellpath isn't == to path,
-    /// the returned cell is guarenteed to be a packed cell)
-    pub fn follow_path_and_split(&mut self, mut path: CellPath) -> (CellPath, &mut Self)
-        where D: AggregateData
-    {
+    /// Follows the given path, using [to_internal] at each node
+    pub fn follow_internal_path(&mut self, mut path: CellPath) -> &mut Cell<D> {
         let Some(child) = path.pop()
-            else { return (path, self); };
+            else { return self };
 
-        self.split();
-        match self {
-            Cell::Leaf(_) =>
-                unreachable!("split should convert leafs to internals"),
-            Cell::Internal(i) =>
-                i.get_child_mut(child).follow_path_and_split(path),
-            Cell::Packed(_) =>
-                (path, self),
-        }
+        self.to_internal(Default::default())
+            .get_child_mut(child)
+            .follow_internal_path(path)
     }
 
     /// Like [follow_path] but does continue into packed cells
@@ -383,7 +393,10 @@ impl<D: Data> Cell<D> {
     /// A single leaf has depth 0, an inner with all leaf children has leaf 1
     pub fn depth(&self) -> u32 {
         match self {
-            Cell::Internal(i) => i.iter_children().map(|x| x.depth()).max().unwrap_or(0) + 1,
+            Cell::Internal(i) =>
+                i.iter_children()
+                    .map(|x| x.depth())
+                    .max().expect("always 8 children") + 1,
             Cell::Leaf(_) => 0,
             Cell::Packed(p) => p.depth(),
         }
@@ -581,7 +594,8 @@ mod tests {
 
     #[test]
     pub fn test_update_all_unpacked() {
-        let mut cell: Cell<_> = InternalCell::new_full(SumData(1)).into();
+        let mut cell: Cell<_> = InternalCell::new_full(SumData(1), SumData(1)).into();
+        cell.update_all();
         assert_eq!(*cell.data().into_inner(), 8);
         if let Cell::Internal(as_internal) = &mut cell {
             as_internal.iter_children_mut().enumerate().for_each(|(i, v)| {
@@ -694,5 +708,46 @@ mod tests {
             cell.iter().map(|i| i.path).collect_vec(),
             PackedIndexIterator::new(2).map(|p| p.2).collect_vec(),
         );
+    }
+
+    #[test]
+    pub fn test_to_internal() {
+        let mut c: Cell<_> = LeafCell::new(SumData(5)).into();
+        assert_eq!(*c.data().into_inner(), 5);
+        assert_eq!(c.depth(), 0);
+        c.to_internal(SumData(10));
+        assert_eq!(*c.data().into_inner(), 10);
+        assert_eq!(c.depth(), 1);
+        c.update_all();
+        assert_eq!(*c.data().into_inner(), 8 * 5);
+        assert_eq!(c.depth(), 1);
+    }
+
+    #[test]
+    pub fn test_to_internal_packed() {
+        let mut c: Cell<_> = PackedCell::new_filled(0, SumData(0), SumData(3))
+            .into();
+        assert_eq!(*c.data().into_inner(), 3);
+        assert_eq!(c.depth(), 0);
+        c.to_internal(SumData(42));
+        assert_eq!(*c.data().into_inner(), 42);
+        assert_eq!(c.depth(), 1);
+        c.update_all();
+        assert_eq!(*c.data().into_inner(), 8 * 3);
+    }
+
+    #[test]
+    pub fn test_to_internal_packed_l2() {
+        let mut c: Cell<_> = PackedCell::new_filled(1, SumData(0), SumData(3))
+            .into();
+        assert_eq!(*c.data().into_inner(), 0);
+        assert_eq!(c.depth(), 1);
+        println!("{c:#?}");
+        c.to_internal(SumData(42));
+        println!("{c:#?}");
+        assert_eq!(*c.data().into_inner(), 0);
+        assert_eq!(c.depth(), 1);
+        c.update_all();
+        assert_eq!(*c.data().into_inner(), 8i32 * 3);
     }
 }

@@ -72,13 +72,13 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
                     subdivs,
                 );
                 lock = data.lock().unwrap();
-                *lock.root_svo.follow_path_and_split(path).1 = result;
+                *lock.root_svo.follow_internal_path(path) = result;
                 lock.root_svo.update_on_path(path);
 
                 *lock.generated.follow_path_mut(path).1 = svo::LeafCell {
                     data: svo::StatBool(false),
                 }.into();
-                *lock.generated.follow_path_and_split(path).1 = svo::Cell::new_with_depth(
+                *lock.generated.follow_internal_path(path) = svo::Cell::new_with_depth(
                     subdivs,
                     svo::StatBool(true)
                 );
