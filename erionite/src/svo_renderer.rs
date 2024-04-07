@@ -291,8 +291,9 @@ fn chunks_splitting_system(
                 // or merging would create an overcroweded chunk
                 else { continue 'merges; };
                 let Some(cchunk) = chunks.get(cleaf.data.entity).ok()
-                // non existent = merge is probably fine ^^
-                else { continue; };
+                // Stopping merge here seems to fix chunks not being despawned on
+                // some merges
+                else { continue 'merges; };
                 // is overcrowded
                 if cchunk.target_subdivs+1 > renderer.options.chunk_split_subdivs {
                     continue 'merges;
