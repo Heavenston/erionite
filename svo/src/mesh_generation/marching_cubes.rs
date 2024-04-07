@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use bevy_math::{bounding::Aabb3d, UVec3, Vec3, Vec4};
 use bevy_render::{color::Color, mesh::{self, Mesh}, render_asset::RenderAssetUsages};
 use ordered_float::OrderedFloat;
-use utils::{AabbExt as _, Vec3Ext};
+use utils::AabbExt as _;
 
 use crate::{self as svo, CellPath, PackedIndexIterator, TerrainCellKind};
 
