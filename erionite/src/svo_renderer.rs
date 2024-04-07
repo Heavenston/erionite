@@ -46,7 +46,8 @@ pub struct SvoRendererComponentOptions {
     /// Chunks with less subdivs are merged
     pub chunk_merge_subdivs: u32,
 
-    pub chunk_subdiv_half_life: f64,
+    /// higher = more subdivs?
+    pub chunk_falloff_multiplier: f64,
 
     pub root_aabb: DAabb,
 
@@ -180,10 +181,17 @@ fn chunks_subdivs_system(
             else { continue };
             let closest_camera_dist = closest_camera_dist_2.sqrt();
 
-            let subdiv_reduce =
-                (closest_camera_dist / renderer.options.chunk_subdiv_half_life)
-                .log2().floor() as u32;
-            let mut total_subdivs = renderer.options.max_subdivs.saturating_sub(subdiv_reduce);
+            let mut total_subdivs = 0u32;
+            while total_subdivs < renderer.options.max_subdivs  {
+                let mut width = renderer.options.root_aabb.size / 2f64.powi(total_subdivs as i32);
+                width *= renderer.options.chunk_falloff_multiplier;
+                if closest_camera_dist < width.max_element() {
+                    total_subdivs += 1;
+                }
+                else {
+                    break;
+                }
+            }
 
             if total_subdivs < renderer.options.min_subdivs {
                 total_subdivs = renderer.options.min_subdivs;
@@ -231,7 +239,7 @@ fn chunks_splitting_system(
             let mut on_new_chunk = renderer.options.on_new_chunk.take();
             let cell = renderer.chunks_svo.follow_path_mut(chunkpath).1;
             if let svo::Cell::Leaf(leaf) = cell {
-                commands.entity(leaf.data.entity).despawn();
+                commands.entity(leaf.data.entity).despawn_recursive();
             }
             cell.split();
 
@@ -296,9 +304,9 @@ fn chunks_splitting_system(
             log::debug!("merge into {new_chunk_path:?}");
 
             for &nentity in &children_entities {
-                let Some(mut c) = commands.get_entity(nentity)
+                let Some(c) = commands.get_entity(nentity)
                 else { continue; };
-                c.despawn();
+                c.despawn_recursive();
             }
 
             let new_chunk_entity = commands.spawn((

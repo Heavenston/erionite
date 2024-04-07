@@ -36,9 +36,7 @@ pub trait AabbExt<T: GlamFloat<Aabb3d = Self>>
         let min = self.min().array();
 
         T::Vec3::from_array([0,1,2].map(|i|
-            if point[i] > max[i]      { max[i] }
-            else if point[i] < min[i] { min[i] }
-            else                      { point[i] }
+            num_traits::clamp(point[i], min[i], max[i])
         ))
     }
 }
