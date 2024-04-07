@@ -81,7 +81,7 @@ impl Cam {
 
 impl FromWorld for Cam {
     fn from_world(_: &mut World) -> Self {
-        let mut this = Self {
+        let this = Self {
             entity: None,
             speed: 20.,
         };
@@ -108,7 +108,7 @@ fn setup(
     commands.spawn(SvoRendererBundle {
         transform: TransformBundle::default(),
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
-            max_subdivs: 12,
+            max_subdivs: 13,
             min_subdivs: 4,
             chunk_falloff_multiplier: 20.,
             
