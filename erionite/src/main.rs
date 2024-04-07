@@ -7,9 +7,7 @@ use svo_renderer::{ChunkComponent, SvoRendererBundle, SvoRendererComponent, SvoR
 mod svo_provider;
 use svo_provider::generator_svo_provider;
 
-use std::{cmp::Ordering, f32::consts::*};
-
-use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, prelude::*};
+use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, prelude::*, window::{CursorGrabMode, PrimaryWindow}};
 use utils::DAabb;
 use bevy_rapier3d::prelude::*;
 
@@ -75,26 +73,18 @@ fn main() {
 #[derive(Resource)]
 pub struct Cam {
     pub entity: Option<Entity>,
-    pub angle: Vec2,
-    pub local_angle: Quat,
-    pub distance: f32,
+    pub speed: f32,
 }
 
 impl Cam {
-    fn reset_dist(&mut self) {
-        self.distance = 20_000.;
-    }
 }
 
 impl FromWorld for Cam {
     fn from_world(_: &mut World) -> Self {
         let mut this = Self {
             entity: None,
-            angle: Vec2::ZERO,
-            local_angle: default(),
-            distance: 0.,
+            speed: 20.,
         };
-        this.reset_dist();
         this
     }
 }
@@ -149,7 +139,8 @@ fn setup(
     
     // camera
     camera.entity = Some(commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
+        transform: Transform::from_xyz(0., (radius*4.) as f32, 0.)
+            .looking_at(Vec3::ZERO, Vec3::Y),
         ..default()
     }).id());
     // // ui camera
@@ -193,9 +184,16 @@ fn update_debug_text(
     time: Res<Time>,
     diagnostics: Res<DiagnosticsStore>,
 
+    transforms: Query<&Transform>,
+    camera: Res<Cam>,
+
     mut debug_text: Query<&mut Text, With<DebugTextComponent>>,
-    chunks: Query<(&ChunkComponent, &ViewVisibility)>,
+    chunks: Query<&ChunkComponent>,
 ) {
+    let Some(cam_entity) = camera.entity
+    else { return; };
+    let cam_transform = transforms.get(cam_entity).unwrap();
+
     let mut fps = 0.0;
     if let Some(fps_diagnostic) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
         if let Some(fps_smoothed) = fps_diagnostic.smoothed() {
@@ -213,47 +211,31 @@ fn update_debug_text(
     }
 
     let mut chunk_count = 0;
-    let mut chunks_list = String::new();
-    let mut chunks_vec = chunks.iter().collect::<Vec<_>>();
-    chunks_vec.sort_unstable_by(|(c1, v1), (c2, v2)| {
-        if c1.is_generating() != c2.is_generating() {
-            return if c1.is_generating() { Ordering::Less } else { Ordering::Greater };
-        }
-        
-        if c1.is_generating_mesh() != c2.is_generating_mesh() {
-            return if c1.is_generating_mesh() { Ordering::Less } else { Ordering::Greater };
-        }
-        
-        if c1.is_generating_collider() != c2.is_generating_collider() {
-            return if c1.is_generating_collider() { Ordering::Less } else { Ordering::Greater };
-        } 
-
-        if v1.get() != v2.get() {
-            return if v1.get() { Ordering::Less } else { Ordering::Greater };
-        }
-        
-        c2.path.len().cmp(&c1.path.len())
-            .then(c1.path.index().cmp(&c2.path.index()))
-    });
-    for (chunk, visible) in chunks_vec {
+    let mut chunk_gen_count = 0;
+    let mut chunk_mesh_gen_count = 0;
+    let mut chunk_col_gen_count = 0;
+    for chunk in &chunks {
         chunk_count += 1;
-        chunks_list += &format!("[{chunk_count:02}] {:?} @ {}", chunk.path, chunk.target_subdivs);
-        if visible.get() {
-            chunks_list += " [visible]"
-        }
         if chunk.is_generating() {
-            chunks_list += " [generating]"
+            chunk_gen_count += 1;
         }
         if chunk.is_generating_mesh() {
-            chunks_list += " [mesh generating]"
+            chunk_mesh_gen_count += 1;
         }
-        chunks_list.push('\n');
+        if chunk.is_generating_collider() {
+            chunk_col_gen_count += 1;
+        }
     }
 
+    let cam_pos = cam_transform.translation;
+    let cam_speed = camera.speed;
+
     let mut debug_text = debug_text.single_mut();
-    debug_text.sections[0].value = format!(
-        "{fps:.1} fps - {frame_time:.3} ms/frame\nChunks: {chunk_count}\n{chunks_list}"
-    );
+    debug_text.sections[0].value = format!("\
+{fps:.1} fps - {frame_time:.3} ms/frame \n\
+Chunks: {chunk_count}, gen {chunk_gen_count}, mesh {chunk_mesh_gen_count}, col {chunk_col_gen_count} \n\
+Camera: speed {cam_speed}, position {cam_pos} \n\
+    ");
 }
 
 fn camera(
@@ -266,50 +248,54 @@ fn camera(
 
     kb_input: Res<ButtonInput<KeyCode>>,
     mouse_input: Res<ButtonInput<MouseButton>>,
+
+    mut q_windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
+    let mut window = q_windows.single_mut();
+    
     let Some(entity) = camera.entity
     else { return; };
 
     let mut trans = transforms.get_mut(entity).unwrap();
 
-    camera.distance -= 2000.;
-    for me in mouse_wheel_events.read() {
-        if me.y < 0. {
-            camera.distance *= 1.1;
-        } else if me.y > 0. {
-            camera.distance /= 1.1;
+    if mouse_input.just_pressed(MouseButton::Left) {
+        window.cursor.grab_mode = CursorGrabMode::Confined;
+        window.cursor.visible = false;
+    }
+    if mouse_input.just_released(MouseButton::Left) {
+        window.cursor.grab_mode = CursorGrabMode::None;
+        window.cursor.visible = true;
+    }
+
+    for mwe in mouse_wheel_events.read() {
+        if mwe.y < 0. {
+            camera.speed *= 0.9;
+        }
+        else if mwe.y > 0. {
+            camera.speed *= 1.1;
         }
     }
-    if kb_input.just_pressed(KeyCode::ArrowUp) {
-        camera.distance /= 1.1;
-    }
-    if kb_input.just_pressed(KeyCode::ArrowDown) {
-        camera.distance *= 1.1;
-    }
-    camera.distance += 2000.;
-
     if mouse_input.pressed(MouseButton::Left) {
-        camera.local_angle = default();
         for me in mouse_move_events.read() {
-            camera.angle.y -= me.delta.y / 120.;
-            camera.angle.x -= me.delta.x / 120.;
-            camera.angle.y = camera.angle.y.clamp(-PI/2.+0.01, PI/2.-0.01);
-        }
-    }
-    if mouse_input.pressed(MouseButton::Right) {
-        for me in mouse_move_events.read() {
-            camera.local_angle *= Quat::from_rotation_y(me.delta.x / 240.);
-            camera.local_angle *= Quat::from_rotation_x(me.delta.y / 240.);
-        }
-    }
-    if kb_input.just_pressed(KeyCode::KeyR) {
-        camera.reset_dist();
-    }
+            let mov = me.delta / -300.;
 
-    trans.translation = 
-        Quat::from_rotation_y(camera.angle.x) *
-        Quat::from_rotation_x(camera.angle.y) *
-        (Vec3::new(0., 0., 1.) * camera.distance);
-    trans.look_at(Vec3::ZERO, Vec3::Y);
-    trans.rotate_local(camera.local_angle);
+            trans.rotate_local_y(mov.x);
+            trans.rotate_local_x(mov.y);
+        }
+
+        let f = trans.forward();
+        let l = trans.left();
+        if kb_input.pressed(KeyCode::KeyW) {
+            trans.translation += f * camera.speed;
+        }
+        if kb_input.pressed(KeyCode::KeyS) {
+            trans.translation -= f * camera.speed;
+        }
+        if kb_input.pressed(KeyCode::KeyA) {
+            trans.translation += l * camera.speed;
+        }
+        if kb_input.pressed(KeyCode::KeyD) {
+            trans.translation -= l * camera.speed;
+        }
+    }
 }
