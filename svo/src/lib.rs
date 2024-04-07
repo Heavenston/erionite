@@ -327,7 +327,7 @@ impl<D: Data> Cell<D> {
             },
             Cell::Packed(p) => {
                 for leveli in 0..p.depth() {
-                    for (_, _, path) in PackedIndexIterator::new(leveli) {
+                    for (_, path) in PackedIndexIterator::new(leveli) {
                         update(p.get_mut(path));
                     }
                 }
@@ -518,7 +518,7 @@ impl<'a, D: Data> Iterator for SvoIterator<'a, D> {
                     });
                 },
                 Some(&(path, Cell::Packed(p))) => 'branch: {
-                    let Some((_, _, child_path)) = self.packed_iterator
+                    let Some((_, child_path)) = self.packed_iterator
                         .get_or_insert_with(|| PackedIndexIterator::new(p.depth()))
                         .next()
                     else {
@@ -706,7 +706,7 @@ mod tests {
         );
         assert_eq!(
             cell.iter().map(|i| i.path).collect_vec(),
-            PackedIndexIterator::new(2).map(|p| p.2).collect_vec(),
+            PackedIndexIterator::new(2).map(|p| p.1).collect_vec(),
         );
     }
 

@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use bevy_math::{bounding::Aabb3d, Vec3, Vec4};
+use bevy_math::{bounding::Aabb3d, UVec3, Vec3, Vec4};
 use bevy_render::{color::Color, mesh::{self, Mesh}, render_asset::RenderAssetUsages};
 use ordered_float::OrderedFloat;
 use utils::{AabbExt as _, Vec3Ext};
 
-use crate::{self as svo, TerrainCellKind, CellPath};
+use crate::{self as svo, CellPath, PackedIndexIterator, TerrainCellKind};
 
 const EDGE_TABLE: [u16; 256] = [
 0x0  , 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
@@ -479,11 +479,11 @@ fn kernel(
         });
 }
 
-const VERTICES: [Vec3; 8] = [
-    Vec3::new(0., 0., 0.), Vec3::new(1., 0., 0.),
-    Vec3::new(1., 0., 1.), Vec3::new(0., 0., 1.),
-    Vec3::new(0., 1., 0.), Vec3::new(1., 1., 0.),
-    Vec3::new(1., 1., 1.), Vec3::new(0., 1., 1.),
+const VERTICES: [UVec3; 8] = [
+    UVec3::new(0, 0, 0), UVec3::new(1, 0, 0),
+    UVec3::new(1, 0, 1), UVec3::new(0, 0, 1),
+    UVec3::new(0, 1, 0), UVec3::new(1, 1, 0),
+    UVec3::new(1, 1, 1), UVec3::new(0, 1, 1),
 ];
 
 pub fn run(
@@ -498,21 +498,21 @@ pub fn run(
 
     let mut state = State::new(out);
 
-    for current in utils::every_cubes::<f32>(aabb, cube_size) {
-        let vertices = VERTICES.map(|d| current + d * cube_size);
-        let samples = vertices
-            .map(|c| {
-                CellPath::in_unit_cube::<f32>(
-                    depth+chunk.depth(),
-                    (c - root_aabb.min) / root_aabb.size()
-                )
-                    .map(|path| root_cell.get_path(path).into_inner())
-                    .map(|x| (x.distance, x.kind))
-                    .unwrap_or((0., TerrainCellKind::Invalid))
+    for (_, subpath) in PackedIndexIterator::new(depth) {
+        let path = chunk.extended(subpath);
+        let pos = subpath.get_pos();
+
+        let samples = VERTICES
+            .map(|v| {
+                path.neighbor(v.x as _, v.y as _, v.z as _)
+                    .map(|n| root_cell.get_path(n).into_inner())
+                    .map(|cell| (cell.distance, cell.kind))
+                    .unwrap_or_default()
             });
 
         kernel(
-            &mut state, samples, vertices
+            &mut state, samples, VERTICES
+                .map(|d| (pos + d).as_vec3() * cube_size + aabb.min)
         );
     }
 }

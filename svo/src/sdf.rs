@@ -18,7 +18,8 @@ pub fn svo_from_sdf<F>(
     let mut packed_data = svo::TerrainPackedCell::new_default(max_subdiv);
 
     let width = 2f64.powi(max_subdiv as i32);
-    for (index, pos, _) in svo::PackedIndexIterator::new(max_subdiv) {
+    for (index, path) in svo::PackedIndexIterator::new(max_subdiv) {
+        let pos = path.get_pos();
         let npos = aabb.position + (pos.as_dvec3() / width) * aabb.size;
         let s = sample(&npos);
         packed_data.leaf_level_mut().raw_array_mut()[index] =  svo::TerrainCellData {

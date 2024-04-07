@@ -76,7 +76,7 @@ impl PackedIndexIterator {
 }
 
 impl<'a> Iterator for PackedIndexIterator {
-    type Item = (usize, UVec3, CellPath);
+    type Item = (usize, CellPath);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index == level_size(self.depth) as usize {
@@ -84,7 +84,7 @@ impl<'a> Iterator for PackedIndexIterator {
         }
 
         let path = CellPath::from_index(self.index as _, self.depth);
-        let current = (self.index, path.get_pos(), path);
+        let current = (self.index, path);
 
         self.index += 1;
 
@@ -122,12 +122,12 @@ impl<'a, D> PackedCellLevelRef<'a, D> {
 }
 
 impl<'a, D> IntoIterator for PackedCellLevelRef<'a, D> {
-    type Item = (&'a D, UVec3, CellPath);
+    type Item = (&'a D, CellPath);
     type IntoIter = impl Iterator<Item = Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
         PackedIndexIterator::new(self.depth)
-            .map(|(index, coords, path)| (&self.level.data[index], coords, path))
+            .map(|(index, path)| (&self.level.data[index], path))
     }
 }
 
@@ -215,7 +215,7 @@ impl<D: Data> PackedCell<D> {
         where D: AggregateData
     {
         for leveli in (0..self.depth()).rev() {
-            for (_, _, path) in PackedIndexIterator::new(leveli) {
+            for (_, path) in PackedIndexIterator::new(leveli) {
                 self.update_cell(path);
             }
         }
