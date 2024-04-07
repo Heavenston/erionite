@@ -19,16 +19,6 @@ impl Default for ChunkSvoData {
     }
 }
 
-impl svo::InternalData for ChunkSvoData {}
-
 impl svo::Data for ChunkSvoData {
-    type Internal = Self;
-}
-
-impl svo::AggregateData for ChunkSvoData {
-    fn aggregate<'a>(
-        _children: [svo::EitherDataRef<Self>; 8]
-    ) -> Self::Internal {
-        Self::default()
-    }
+    type Internal = ();
 }

@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 bevy = "0.13.1"
 bevy_rapier3d = "0.25.0"
+derivative = "2.2.0"
 either = "1.10.0"
 fern = { version = "0.6.2", features = ["colored"] }
 log = "0.4.21"

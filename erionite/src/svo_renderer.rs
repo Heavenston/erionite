@@ -1,10 +1,8 @@
 mod chunk_svo;
 use std::sync::Arc;
 
-use chunk_svo::*;
-
 use ordered_float::OrderedFloat;
-use bevy::{ecs::system::EntityCommands, prelude::*, render::primitives::Aabb, tasks::{block_on, AsyncComputeTaskPool, Task}};
+use bevy::{ecs::system::EntityCommands, prelude::*, tasks::{block_on, AsyncComputeTaskPool, Task}};
 use bevy_rapier3d::prelude::*;
 use svo::{mesh_generation::marching_cubes, CellPath};
 use utils::{AabbExt, DAabb};
@@ -25,7 +23,7 @@ impl Plugin for SvoRendererPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, (
             new_renderer_system,
-            chunks_subdivs_system, chunks_splitting_system, chunk_system
+            chunks_subdivs_system, chunk_system
         ).chain());
     }
 }
@@ -58,29 +56,27 @@ pub struct SvoRendererComponentOptions {
 pub struct SvoRendererComponent {
     pub options: SvoRendererComponentOptions,
 
-    chunks_svo: svo::Cell<ChunkSvoData>,
-
-    chunks_to_split: Vec<svo::CellPath>,
-    chunks_to_merge: Vec<svo::CellPath>,
+    root_chunk: Entity,
 }
 
 impl SvoRendererComponent {
     pub fn new(options: SvoRendererComponentOptions) -> Self {
         Self {
             options,
-            
-            chunks_svo: default(),
 
-            chunks_to_split: vec![],
-            chunks_to_merge: vec![],
+            root_chunk: Entity::PLACEHOLDER,
         }
     }
 }
 
-#[derive(Default, Component)]
+#[derive(derivative::Derivative, Component)]
+#[derivative(Default)]
 pub struct ChunkComponent {
-    pub path: svo::CellPath,
-    pub target_subdivs: u32,
+    path: svo::CellPath,
+    target_subdivs: u32,
+
+    #[derivative(Default(value="Entity::PLACEHOLDER"))]
+    renderer: Entity,
 
     should_update_data: bool,
     data_subdivs: u32,
@@ -97,9 +93,10 @@ pub struct ChunkComponent {
 }
 
 impl ChunkComponent {
-    fn new(path: svo::CellPath) -> Self {
+    fn new(renderer: Entity, path: svo::CellPath) -> Self {
         Self {
             path,
+            renderer,
 
             ..default()
         }
@@ -122,22 +119,14 @@ fn new_renderer_system(
     mut commands: Commands,
     mut svo_renders: Query<(Entity, &mut SvoRendererComponent), Added<SvoRendererComponent>>,
 ) {
-    for (entity, mut renderer) in &mut svo_renders {
-        let svo::Cell::Leaf(chunk_leaf) = &renderer.chunks_svo
-        else { continue; };
-        if chunk_leaf.data.entity != Entity::PLACEHOLDER {
-            continue;
-        }
-
-        commands.entity(entity).insert(VisibilityBundle::default());
+    for (renderer_entity, mut renderer) in &mut svo_renders {
+        commands.entity(renderer_entity).insert(VisibilityBundle::default());
         let root_chunk_entitiy = commands.spawn((
-            ChunkComponent::new(CellPath::new()),
+            ChunkComponent::new(renderer_entity, CellPath::new()),
             TransformBundle::default(),
             VisibilityBundle::default(),
-        )).set_parent(entity).id();
-        renderer.chunks_svo = svo::LeafCell {
-            data: ChunkSvoData { entity: root_chunk_entitiy }
-        }.into();
+        )).set_parent(renderer_entity).id();
+        renderer.root_chunk = root_chunk_entitiy;
         if let Some(on_new_chunk) = &mut renderer.options.on_new_chunk {
             on_new_chunk(commands.entity(root_chunk_entitiy));
         }
@@ -148,194 +137,59 @@ fn new_renderer_system(
 fn chunks_subdivs_system(
     cameras: Query<(&Camera, &GlobalTransform)>,
     mut chunks: Query<&mut ChunkComponent>,
-    mut svo_renders: Query<(&mut SvoRendererComponent, &GlobalTransform)>,
+    svo_renders: Query<(&SvoRendererComponent, &GlobalTransform)>,
 ) {
     let cameras_poses = cameras.iter()
         .filter(|(c, _)| c.is_active)
         .map(|(_, t)| t.translation())
         .collect::<Vec<_>>();
 
-    for (mut renderer, &trans) in svo_renders.iter_mut() {
+    for mut chunk in &mut chunks {
+        let Ok((SvoRendererComponent { options, .. }, renderer_trans)) =
+            svo_renders.get(chunk.renderer)
+        else {
+            log::warn!("Chunk without proper rendrere !?");
+            continue;
+        };
+
         let relative_camera_poses = cameras_poses.iter()
-            .map(|&cp| trans * cp)
+            .map(|&cp| renderer_trans.transform_point(cp))
             .collect::<Vec<_>>();
+        let aabb = chunk.path.get_aabb(options.root_aabb);
 
-        // Later swaped with renderer's version
-        let mut chunks_to_split = vec![];
-        let mut chunks_to_merge = vec![];
+        let Some(closest_camera_dist_2) = relative_camera_poses.iter()
+            .map(Vec3::as_dvec3)
+            .map(|campos| aabb.closest_point(campos).distance_squared(campos))
+            .min_by_key(|&d| OrderedFloat(d))
+        else { continue };
+        let closest_camera_dist = closest_camera_dist_2.sqrt();
 
-        for svo::SvoIterItem {
-            data: chunkdata, path: chunkpath,
-        } in renderer.chunks_svo.iter() {
-            let Ok(mut chunk) = chunks.get_mut(chunkdata.entity)
+        let mut total_subdivs = 0u32;
+        while total_subdivs < options.max_subdivs  {
+            let mut width = options.root_aabb.size / 2f64.powi(total_subdivs as i32);
+            width *= options.chunk_falloff_multiplier;
+            if closest_camera_dist < width.max_element() {
+                total_subdivs += 1;
+            }
             else {
-                log::warn!("Stored chunk entity does not exist");
-                continue;
-            };
-            let aabb = chunkpath.get_aabb(renderer.options.root_aabb);
-
-            let Some(closest_camera_dist_2) = relative_camera_poses.iter()
-                .map(Vec3::as_dvec3)
-                .map(|campos| aabb.closest_point(campos).distance_squared(campos))
-                .min_by_key(|&d| OrderedFloat(d))
-            else { continue };
-            let closest_camera_dist = closest_camera_dist_2.sqrt();
-
-            let mut total_subdivs = 0u32;
-            while total_subdivs < renderer.options.max_subdivs  {
-                let mut width = renderer.options.root_aabb.size / 2f64.powi(total_subdivs as i32);
-                width *= renderer.options.chunk_falloff_multiplier;
-                if closest_camera_dist < width.max_element() {
-                    total_subdivs += 1;
-                }
-                else {
-                    break;
-                }
-            }
-
-            if total_subdivs < renderer.options.min_subdivs {
-                total_subdivs = renderer.options.min_subdivs;
-            }
-            
-            let subdivs = total_subdivs.saturating_sub(chunkpath.len());
-           
-            if chunk.target_subdivs != subdivs {
-                chunk.should_update_data = true;
-                chunk.target_subdivs = subdivs;
-            }
-
-            if chunk.target_subdivs > renderer.options.chunk_split_subdivs {
-                chunks_to_split.push(chunkpath);
-            }
-            if chunk.target_subdivs < renderer.options.chunk_merge_subdivs {
-                // don't merge root
-                if chunkpath.len() > 0 {
-                    chunks_to_merge.push(chunkpath);
-                }
+                break;
             }
         }
 
-        std::mem::swap(&mut chunks_to_split, &mut renderer.chunks_to_split);
-        std::mem::swap(&mut chunks_to_merge, &mut renderer.chunks_to_merge);
-    }
-}
-
-/// Splits / merges chunks
-fn chunks_splitting_system(
-    mut commands: Commands,
-    mut chunks: Query<&mut ChunkComponent>,
-    mut svo_renders: Query<(Entity, &mut SvoRendererComponent, &mut SvoProviderComponent)>,
-) {
-    for (renderer_entity, mut renderer, mut provider) in svo_renders.iter_mut() {
-        let root_aabb = renderer.options.root_aabb;
-
-        let chunks_to_split = std::mem::take(&mut renderer.chunks_to_split);
-        let chunks_to_merge = std::mem::take(&mut renderer.chunks_to_merge);
-
-        // Splitting chunks
-        for chunkpath in chunks_to_split {
-            log::debug!("split {chunkpath:?}");
-
-            let mut on_new_chunk = renderer.options.on_new_chunk.take();
-            let cell = renderer.chunks_svo.follow_path_mut(chunkpath).1;
-            if let svo::Cell::Leaf(leaf) = cell {
-                commands.entity(leaf.data.entity).despawn_recursive();
-            }
-            cell.split();
-
-            for child in CellPath::components() {
-                let child_path = chunkpath.with_push(child);
-                let child_cell = match cell {
-                    svo::Cell::Internal(i) => i,
-                    _ => unreachable!("Just splitted and chunk svo should never have packed cells"),
-                }.get_child_mut(child);
-
-                let chunk_entitiy = commands.spawn((
-                    ChunkComponent::new(child_path),
-                    TransformBundle::default(),
-                    VisibilityBundle::default(),
-                    Into::<Aabb>::into(child_path.get_aabb(root_aabb)),
-                )).set_parent(renderer_entity).id();
-                child_cell.data_mut().entity = chunk_entitiy;
-                if let Some(on_new_chunk) = &mut on_new_chunk {
-                    on_new_chunk(commands.entity(chunk_entitiy));
-                }
-            }
-
-            renderer.options.on_new_chunk = on_new_chunk;
+        if total_subdivs < options.min_subdivs {
+            total_subdivs = options.min_subdivs;
         }
-
-        // merging chunks
-        'merges: for chunkpath in chunks_to_merge {
-            let Some(new_chunk_path) = chunkpath.parent()
-            else {
-                log::warn!("root path have been set for merging");
-                continue;
-            };
-            let mut children_entities = [Entity::PLACEHOLDER; 8];
-
-            // If chunk isn't a leaf node at that position it may have already been
-            // merged in previous iterations
-            {
-                let (foundpath, cell) = renderer.chunks_svo.follow_path(chunkpath);
-                if foundpath != chunkpath || !matches!(cell, svo::Cell::Leaf(_)) {
-                    continue;
-                }
-            }
-
-            // check if merging would mean immediately splitting ('overcrowded' chunk)
-            for (i, child) in new_chunk_path.children().into_iter().enumerate() {
-                let svo::Cell::Leaf(cleaf) =
-                    renderer.chunks_svo.follow_path(child).1
-                // not a leaf = either its children will be merged later
-                // or merging would create an overcroweded chunk
-                else { continue 'merges; };
-                let Some(cchunk) = chunks.get(cleaf.data.entity).ok()
-                // Stopping merge here seems to fix chunks not being despawned on
-                // some merges
-                else { continue 'merges; };
-                // is overcrowded
-                if cchunk.target_subdivs+1 > renderer.options.chunk_split_subdivs {
-                    continue 'merges;
-                }
-
-                children_entities[i] = cleaf.data.entity;
-            }
-
-            log::debug!("merge into {new_chunk_path:?}");
-
-            for &nentity in &children_entities {
-                let Some(c) = commands.get_entity(nentity)
-                else { continue; };
-                c.despawn_recursive();
-            }
-
-            let new_chunk_entity = commands.spawn((
-                ChunkComponent::new(new_chunk_path),
-                TransformBundle::default(),
-                VisibilityBundle::default(),
-                Into::<Aabb>::into(new_chunk_path.get_aabb(root_aabb)),
-            )).set_parent(renderer_entity).id();
-            *renderer.chunks_svo.follow_path_mut(new_chunk_path).1 = svo::LeafCell {
-                data: ChunkSvoData { entity: new_chunk_entity, }
-            }.into();
-            if let Some(on_new_chunk) = &mut renderer.options.on_new_chunk {
-                on_new_chunk(commands.entity(new_chunk_entity));
-            }
-        }
-
-        let dirty = provider.drain_dirty_chunks();
-        for &c in &*dirty {
-            for chunkcell in renderer.chunks_svo.follow_path(c).1.iter() {
-                let Ok(mut chunk) = chunks.get_mut(chunkcell.data.entity)
-                else {continue};
-                chunk.should_update_data = true;
-            }
+        
+        let subdivs = total_subdivs.saturating_sub(chunk.path.len());
+       
+        if chunk.target_subdivs != subdivs {
+            chunk.should_update_data = true;
+            chunk.target_subdivs = subdivs;
         }
     }
 }
 
-/// Updates chunk meshes / anything per-chunk
+/// Updates chunk datas, meshes etc.
 fn chunk_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
