@@ -82,13 +82,14 @@ impl CellPath {
     }
 
     pub fn pop(&mut self) -> Option<u3> {
-        if self.len() == 0 {
+        let marker_bit = self.mark_bit_position();
+
+        if marker_bit == 0 {
             return None;
         }
 
-        let marker_bit = self.mark_bit_position();
         let x = marker_bit - 3;
-        let val = u3::extract_u128(self.0, x as usize);
+        let val = unsafe { u3::new_unchecked(((self.0 >> x) & 0b111) as u8) };
 
         // remove last bits
         self.0 &= !(CellPathInner::MAX << x);
