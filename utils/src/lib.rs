@@ -1,5 +1,11 @@
+#![allow(incomplete_features)]
+#![feature(generic_const_exprs)]
+#![feature(maybe_uninit_uninit_array)]
+#![feature(maybe_uninit_array_assume_init)]
+#![feature(maybe_uninit_write_slice)]
+
 mod aabb;
-use std::ops::{Add, Range, Sub};
+use std::{mem::MaybeUninit, ops::{Add, Range, Sub}};
 
 pub use aabb::*;
 mod every_cubes;
@@ -8,6 +14,49 @@ mod generic_glam;
 pub use generic_glam::*;
 
 use bevy_math::{BVec3, UVec3};
+
+/// Copies the content of given arrays into a new bigger array.
+///
+/// # Example
+/// ```
+/// assert_eq!(
+///    utils::join_arrays([0; 3], [1; 3]).map(|x| x*2).as_slice(),
+///    [0,0,0,2,2,2].as_slice(),
+/// );
+/// assert_eq!(
+///    utils::join_arrays([0; 3], [1; 3]).as_slice(),
+///    [0,0,0,1,1,1].as_slice(),
+/// );
+/// assert_eq!(
+///    utils::join_arrays([1,2], [-1; 4]).as_slice(),
+///    [1,2,-1,-1,-1,-1].as_slice(),
+/// );
+/// assert_eq!(
+///    utils::join_arrays([0; 0], [-1; 4]).as_slice(),
+///    [-1,-1,-1,-1].as_slice(),
+/// );
+/// assert_eq!(
+///    utils::join_arrays([1,2,3], [-1; 0]).as_slice(),
+///    [1,2,3].as_slice(),
+/// );
+/// ```
+pub fn join_arrays<T, const AS: usize, const BS: usize>(
+    a: [T; AS],
+    b: [T; BS],
+) -> [T; AS + BS]
+    where T: Copy
+{
+    let mut out = MaybeUninit::uninit_array();
+
+    MaybeUninit::copy_from_slice(&mut out[..AS], &a);
+    MaybeUninit::copy_from_slice(&mut out[AS..], &b);
+
+    unsafe { MaybeUninit::array_assume_init(out) }
+}
+
+#[test]
+fn join_arrays_test() {
+}
 
 pub trait AsVecExt {
     fn as_bvec(&self) -> BVec3;
