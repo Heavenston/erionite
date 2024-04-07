@@ -4,7 +4,7 @@ use arbitrary_int::*;
 use bevy_math::{DVec3, UVec3};
 use utils::{ AsVecExt, DAabb, GlamFloat, Vec3Ext };
 
-type CellPathInner = u128;
+type CellPathInner = u64;
 
 /// Represent a path on the stack by packing a u3 array into a number with
 /// a leading 1 bit as terminator
@@ -78,7 +78,7 @@ impl CellPath {
         }
 
         let marker_bit = self.mark_bit_position();
-        Some(u3::extract_u128(self.0, (marker_bit - 3) as usize))
+        Some(u3::new((self.0 >> ((marker_bit - 3) as usize)) as u8))
     }
 
     pub fn pop(&mut self) -> Option<u3> {
@@ -104,7 +104,7 @@ impl CellPath {
         if len == 0
         { return None; }
 
-        Some(u3::extract_u128(self.0, (len-1) * 3))
+        Some(u3::new((self.0 >> ((len-1) * 3)) as u8))
     }
     
     pub fn parent(self) -> Option<Self> {
