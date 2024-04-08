@@ -104,7 +104,7 @@ impl CellPath {
         if len == 0
         { return None; }
 
-        Some(u3::new((self.0 >> ((len-1) * 3)) as u8))
+        Some(u3::new((self.0 >> ((len-1) * 3) & 0b111) as u8))
     }
     
     pub fn parent(self) -> Option<Self> {
