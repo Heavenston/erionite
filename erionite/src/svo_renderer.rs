@@ -246,7 +246,6 @@ fn chunks_subdivs_system(
         let subdivs = total_subdivs.saturating_sub(chunk.path.len());
        
         if chunk.target_subdivs != subdivs {
-            log::trace!("{:?} has subdivs {subdivs}", chunk.path);
             chunk.should_update_data = true;
             chunk.target_subdivs = subdivs;
         }
@@ -340,7 +339,6 @@ fn chunk_split_merge_system(
                 chunk.mesh_subdivs = 0;
                 chunk.collider_subdivs = 0;
                 commands.entity(chunk_entity).remove::<(Collider, Handle<Mesh>)>();
-                log::debug!("Hidden {:?}", chunk.path);
             }
         }
 
@@ -410,19 +408,15 @@ fn chunk_system(
             let subdivs = actual_subdivs;
             chunk.mesh_task = Some(task_pool.spawn(async move {
                 let mut out = marching_cubes::Out::new(true, false);
-                log::trace!("Rendering mesh...");
-
                 marching_cubes::run(
                     &mut out, chunkpath, &*data, root_aabb.into(), subdivs
                 );
 
                 if out.vertices.len() == 0 {
-                    log::trace!("Empty mesh");
                     return None;
                 }
                 
                 let m = out.into_mesh();
-                log::trace!("Finished mesh");
 
                 Some(m)
             }));
