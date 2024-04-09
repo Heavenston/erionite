@@ -2,11 +2,12 @@ mod chunk_svo;
 use std::sync::Arc;
 
 use ordered_float::OrderedFloat;
-use bevy::{ecs::system::EntityCommands, prelude::*, render::primitives::Aabb, tasks::{block_on, AsyncComputeTaskPool, Task}};
+use bevy::{ecs::system::EntityCommands, prelude::*, render::primitives::Aabb};
 use bevy_rapier3d::prelude::*;
 use svo::{mesh_generation::marching_cubes, CellPath};
 use utils::{AabbExt, DAabb};
 
+use crate::task_runner::{self, Task};
 use crate::svo_provider::SvoProviderComponent;
 
 pub struct SvoRendererPlugin {
@@ -381,7 +382,6 @@ fn chunk_system(
     mut chunks: Query<(Entity, &mut ChunkComponent, Option<&Handle<Mesh>>)>,
     mut svo_renders: Query<(&mut SvoRendererComponent, &mut SvoProviderComponent)>,
 ) {
-    let task_pool = AsyncComputeTaskPool::get();
     for (chunk_entitiy, mut chunk, mesh) in chunks.iter_mut() {
         let Ok((renderer, mut provider)) = svo_renders.get_mut(chunk.renderer)
         else { continue; };
@@ -402,10 +402,10 @@ fn chunk_system(
             chunk.data_subdivs = actual_subdivs;
         }
 
-        if let Some(task) = chunk.data_task
+        if let Some(mut task) = chunk.data_task
             .take_if(|task| task.is_finished())
         {
-            chunk.data = Some(block_on(task));
+            chunk.data = Some(task.join());
             chunk.should_update_mesh = true;
         }
 
@@ -418,7 +418,7 @@ fn chunk_system(
             let chunkpath = chunk.path;
             let root_aabb = renderer.options.root_aabb;
             let subdivs = actual_subdivs;
-            chunk.mesh_task = Some(task_pool.spawn(async move {
+            chunk.mesh_task = Some(task_runner::spawn(move || {
                 let mut out = marching_cubes::Out::new(true, false);
                 marching_cubes::run(
                     &mut out, chunkpath, &*data, root_aabb.into(), subdivs
@@ -434,10 +434,10 @@ fn chunk_system(
             }));
         }
 
-        if let Some(task) = chunk.mesh_task
+        if let Some(mut task) = chunk.mesh_task
             .take_if(|task| task.is_finished())
         {
-            if let Some(new_mesh) = block_on(task) {
+            if let Some(new_mesh) = task.join() {
                 let new_mesh = meshes.add(new_mesh);
                 commands.entity(chunk_entitiy).insert(new_mesh.clone());
                 current_mesh = Some(new_mesh);
@@ -459,7 +459,7 @@ fn chunk_system(
 
             let subdivs = chunk.mesh_subdivs + chunk.path.len();
             let target = renderer.options.max_subdivs;
-            chunk.collider_task = Some(task_pool.spawn(async move {
+            chunk.collider_task = Some(task_runner::spawn(move || {
                 if subdivs != target {
                     return None;
                 }
@@ -469,9 +469,9 @@ fn chunk_system(
             }));
         }
 
-        if let Some(collider) = chunk.collider_task
+        if let Some(mut collider_task) = chunk.collider_task
             .take_if(|task| task.is_finished()) {
-            if let Some(collider) = block_on(collider) {
+            if let Some(collider) = collider_task.join() {
                 commands.entity(chunk_entitiy).insert(collider);
             }
             else {

@@ -1,15 +1,17 @@
+pub mod generator_svo_provider;
+
+use crate::task_runner;
+
 use std::sync::Arc;
 
-use bevy::{ecs::component::Component, tasks::Task};
-
-pub mod generator_svo_provider;
+use bevy::ecs::component::Component;
 
 pub trait SvoProvider {
     fn request_chunk(
         &mut self,
         path: svo::CellPath,
         subdivs: u32,
-    ) -> Task<Arc<svo::TerrainCell>>;
+    ) -> task_runner::Task<Arc<svo::TerrainCell>>;
 
     /// Gets and resets a accumulated list of chunks that changed since last
     /// call to this function

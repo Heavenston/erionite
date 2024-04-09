@@ -1,54 +1,59 @@
-use std::{cell::OnceCell, sync::{atomic::AtomicBool, Arc, Mutex}};
+use std::{cell::UnsafeCell, sync::{atomic::{self, AtomicBool}, Arc}};
 
-use bevy::{app::{Plugin, Update}, ecs::{component::Component, entity::Entity, system::{CommandQueue, Commands, Query}}};
-
-#[derive(Component)]
-pub struct TaskComponent {
-    done: Arc<AtomicBool>,
-    data: Arc<Mutex<Option<CommandQueue>>>,
+#[derive(Debug)]
+struct TaskInner<T> {
+    canceled: AtomicBool,
+    out: UnsafeCell<Option<T>>,
+    done: AtomicBool,
 }
 
-pub struct TaskRunnerPlugin;
-impl Plugin for TaskRunnerPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_systems(Update, run_task_system);
+unsafe impl<T: Sync> Sync for TaskInner<T> { }
+
+#[derive(Debug)]
+pub struct Task<T> {
+    inner: Arc<TaskInner<T>>,
+}
+
+impl<T> Task<T> {
+    pub fn is_finished(&self) -> bool {
+        self.inner.done.load(atomic::Ordering::Relaxed)
+    }
+
+    pub fn join(&mut self) -> T {
+        assert!(self.is_finished());
+        unsafe{&mut *self.inner.out.get()}.take().expect("Cannot join multiple times")
     }
 }
 
-pub fn spawn_task(
-    commands: &mut Commands,
-    f: impl FnOnce(&mut CommandQueue) -> () + Send + 'static
-) {
-    let done = Arc::new(AtomicBool::new(false));
-    let data = Arc::new(Mutex::new(None));
-    let data_ = data.clone();
-    let done_ = done.clone();
-    rayon::spawn(move || {
-        let mut cq = CommandQueue::default();
-
-        f(&mut cq);
-
-        *data_.lock().unwrap() = Some(cq);
-        done_.store(true, std::sync::atomic::Ordering::Relaxed);
-    });
-    commands.spawn(TaskComponent {
-        done,
-        data,
-    });
+impl<T> Drop for Task<T> {
+    fn drop(&mut self) {
+        self.inner.canceled.store(true, atomic::Ordering::Relaxed);
+    }
 }
 
-fn run_task_system(
-    mut commands: Commands,
-    tasks: Query<(Entity, &TaskComponent)>,
-) {
-    for (entity, t) in &tasks {
-        if !t.done.load(std::sync::atomic::Ordering::Relaxed) {
-            continue;
+pub fn spawn<T, F>(f: F) -> Task<T>
+    where T: Send + Sync + 'static,
+          F: FnOnce() -> T + Send + Sync + 'static,
+{
+    let inner = Arc::new(TaskInner::<T> {
+        canceled: AtomicBool::new(false),
+        out: Default::default(),
+        done: AtomicBool::new(false),
+    });
+    let inner_ = Arc::clone(&inner);
+
+    rayon::spawn(move || {
+        if inner_.canceled.load(atomic::Ordering::Relaxed) {
+            return;
         }
-        // can be none if boolean is set before lock is changed
-        let Some(mut data) = t.data.lock().unwrap().take()
-        else { continue; };
-        commands.append(&mut data);
-        commands.entity(entity).despawn();
+        let out = f();
+        unsafe{
+            *inner_.out.get() = Some(out);
+        };
+        inner_.done.store(true, atomic::Ordering::Relaxed);
+    });
+
+    Task {
+        inner,
     }
 }

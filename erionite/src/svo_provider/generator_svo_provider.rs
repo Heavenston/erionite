@@ -1,9 +1,10 @@
 use std::sync::{Arc, Mutex};
 
-use bevy::{prelude::default, tasks::AsyncComputeTaskPool};
+use bevy::prelude::default;
 use either::Either;
 use utils::DAabb;
 
+use crate::task_runner::{self, Task};
 use crate::generator::Generator;
 
 struct SvoData {
@@ -46,14 +47,14 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
         &mut self,
         path: svo::CellPath,
         subdivs: u32,
-    ) -> bevy::tasks::Task<std::sync::Arc<svo::TerrainCell>> {
+    ) -> Task<std::sync::Arc<svo::TerrainCell>> {
         let generator = Arc::clone(&self.generator);
         let aabb = self.aabb;
 
         let data = self.svo_data.clone();
         let dirties = self.dirty_chunks.clone();
 
-        AsyncComputeTaskPool::get().spawn(async move {
+        task_runner::spawn(move || {
             let must_regen = {
                 let lock = data.lock().unwrap();
                 let (fpath, cell) = lock.generated.follow_path(path);

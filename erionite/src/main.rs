@@ -6,6 +6,7 @@ mod svo_renderer;
 use svo_renderer::{ChunkComponent, SvoRendererBundle, SvoRendererComponent, SvoRendererComponentOptions};
 mod svo_provider;
 use svo_provider::generator_svo_provider;
+pub mod task_runner;
 
 use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, prelude::*, window::{CursorGrabMode, PrimaryWindow}};
 use utils::DAabb;
