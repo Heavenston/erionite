@@ -6,8 +6,7 @@ opt-level = 3
 
 [profile.release]
 # lto = "fat"
-debug = true
-strip = false
+strip = true
 
 [workspace]
 resolver = "2"
