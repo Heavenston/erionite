@@ -2,7 +2,7 @@ mod chunk_svo;
 use std::sync::Arc;
 
 use ordered_float::OrderedFloat;
-use bevy::{ecs::system::EntityCommands, prelude::*, tasks::{block_on, AsyncComputeTaskPool, Task}};
+use bevy::{ecs::system::EntityCommands, prelude::*, render::primitives::Aabb, tasks::{block_on, AsyncComputeTaskPool, Task}};
 use bevy_rapier3d::prelude::*;
 use svo::{mesh_generation::marching_cubes, CellPath};
 use utils::{AabbExt, DAabb};
@@ -23,7 +23,9 @@ impl Plugin for SvoRendererPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, (
             new_renderer_system,
-            chunks_subdivs_system, chunk_system
+            chunks_subdivs_system,
+            chunk_split_merge_system,
+            chunk_system,
         ).chain());
     }
 }
@@ -69,14 +71,45 @@ impl SvoRendererComponent {
     }
 }
 
-#[derive(derivative::Derivative, Component)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+enum ChunkMergeState {
+    #[default]
+    Merge,
+    Split,
+
+    ParentMerging,
+}
+
+impl ChunkMergeState {
+    pub fn is_merge(self) -> bool {
+        self == Self::Merge
+    }
+
+    pub fn is_split(self) -> bool {
+        self == Self::Split
+    }
+
+    pub fn is_parent_merging(self) -> bool {
+        self == Self::ParentMerging
+    }
+}
+
+#[derive(derivative::Derivative, Component, Debug)]
 #[derivative(Default)]
 pub struct ChunkComponent {
     path: svo::CellPath,
     target_subdivs: u32,
+    target_state: ChunkMergeState,
 
     #[derivative(Default(value="Entity::PLACEHOLDER"))]
     renderer: Entity,
+
+    /// The Children component is still populated as well but having it here
+    /// allows for the chunk to have other chidren without getting confused
+    /// which one are chunks
+    ///
+    /// Full describes wether the chunk is splitted (Some) or merged (None)
+    chunk_children: Option<[Entity; 8]>,
 
     should_update_data: bool,
     data_subdivs: u32,
@@ -112,6 +145,19 @@ impl ChunkComponent {
 
     pub fn is_generating_collider(&self) -> bool {
         self.collider_task.is_some()
+    }
+
+    pub fn is_busy(&self) -> bool {
+        if self.target_state != ChunkMergeState::Merge {
+            return false;
+        }
+
+        self.is_generating() ||
+        self.is_generating_mesh() ||
+        self.is_generating_collider() ||
+        self.should_update_data ||
+        self.should_update_mesh ||
+        self.should_update_collider
     }
 }
 
@@ -183,8 +229,119 @@ fn chunks_subdivs_system(
         let subdivs = total_subdivs.saturating_sub(chunk.path.len());
        
         if chunk.target_subdivs != subdivs {
+            log::trace!("{:?} has subdivs {subdivs}", chunk.path);
             chunk.should_update_data = true;
             chunk.target_subdivs = subdivs;
+        }
+
+        if chunk.target_state == ChunkMergeState::Split &&
+            chunk.target_subdivs < options.chunk_merge_subdivs {
+            chunk.target_state = ChunkMergeState::Merge;
+        }
+        if chunk.target_state == ChunkMergeState::Merge &&
+            chunk.target_subdivs > options.chunk_split_subdivs {
+            chunk.target_state = ChunkMergeState::Split;
+        }
+    }
+}
+
+fn chunk_split_merge_system(
+    mut commands: Commands,
+    mut chunk_entities: Query<Entity, (With<ChunkComponent>, With<Visibility>)>,
+    mut chunks: Query<&mut ChunkComponent>,
+    mut chunk_complementaries: Query<Option<&Handle<Mesh>>>,
+    mut svo_renders: Query<&mut SvoRendererComponent>,
+) {
+    'chunks_iter: for chunk_entity in &mut chunk_entities {
+        let mut chunk = chunks.get_mut(chunk_entity).expect("Query is filtered");
+        let mesh = chunk_complementaries
+            .get_mut(chunk_entity).expect("Query is filtered");
+
+        let Ok(mut renderer) =
+            svo_renders.get_mut(chunk.renderer)
+        else {
+            log::warn!("Chunk without proper rendrere !?");
+            continue 'chunks_iter;
+        };
+        let options = &mut renderer.options;
+
+        // must split
+        if chunk.chunk_children.is_none() && chunk.target_state.is_split() {
+            let n_children = CellPath::components().map(|child| {
+                let child_path = chunk.path.with_push(child);
+
+                let child_chunk_entitiy = commands.spawn((
+                    ChunkComponent::new(chunk.renderer, child_path),
+                    TransformBundle::default(),
+                    VisibilityBundle::default(),
+                    Into::<Aabb>::into(child_path.get_aabb(options.root_aabb)),
+                )).set_parent(chunk_entity).id();
+
+                if let Some(on_new_chunk) = &mut options.on_new_chunk {
+                    on_new_chunk(commands.entity(child_chunk_entitiy));
+                }
+
+                child_chunk_entitiy
+            });
+
+            chunk.chunk_children = Some(n_children);
+
+            // The chunk is in an semi-invalid state as the newly created children
+            // will only exist when commands is executed so we stop here
+            continue 'chunks_iter;
+        }
+
+        // weird trick to get access to both children and chunk
+        let children = if let Some(children_entities) = chunk.chunk_children {
+            let [chunk_, children_ @ ..] = chunks.get_many_mut::<9>(utils::join_arrays(
+                [chunk_entity],
+                children_entities,
+            ).into()).expect("All children and chunks should exist");
+            chunk = chunk_;
+            Some(children_)
+        }
+        else {
+            None
+        };
+
+        // Rest of the loop is only for chunks with children
+        let Some(children_entities) = chunk.chunk_children
+        else { continue 'chunks_iter; };
+        let Some(mut children) = children
+        else { continue 'chunks_iter; };
+
+        if chunk.target_state.is_split() {
+            for child in &mut children {
+                if child.target_state == ChunkMergeState::ParentMerging {
+                    child.target_state = ChunkMergeState::Merge;
+                }
+            }
+            
+            let can_hide = children.iter().all(|child| !child.is_busy());
+
+            if mesh.is_some() && can_hide {
+                chunk.mesh_subdivs = 0;
+                chunk.collider_subdivs = 0;
+                commands.entity(chunk_entity).remove::<(Collider, Handle<Mesh>)>();
+                log::debug!("Hidden {:?}", chunk.path);
+            }
+        }
+
+        if chunk.target_state.is_merge() {
+            let can_destroy_children = chunk.mesh_task.is_none();
+
+            if can_destroy_children {
+                for childe in children_entities {
+                    commands.entity(childe).despawn_recursive();
+                }
+
+                chunk.chunk_children = None;
+            }
+            else {
+                for child in &mut children {
+                    child.target_state = ChunkMergeState::ParentMerging;
+                }
+            }
         }
     }
 }
@@ -194,12 +351,12 @@ fn chunk_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
 
-    mut chunks: Query<(Entity, &mut ChunkComponent, Option<&Handle<Mesh>>, &Parent)>,
+    mut chunks: Query<(Entity, &mut ChunkComponent, Option<&Handle<Mesh>>)>,
     mut svo_renders: Query<(&mut SvoRendererComponent, &mut SvoProviderComponent)>,
 ) {
     let task_pool = AsyncComputeTaskPool::get();
-    for (chunk_entitiy, mut chunk, mesh, parent) in chunks.iter_mut() {
-        let Ok((renderer, mut provider)) = svo_renders.get_mut(parent.get())
+    for (chunk_entitiy, mut chunk, mesh) in chunks.iter_mut() {
+        let Ok((renderer, mut provider)) = svo_renders.get_mut(chunk.renderer)
         else { continue; };
 
         let actual_subdivs = renderer.options.chunk_split_subdivs
@@ -208,7 +365,7 @@ fn chunk_system(
         // as the actual entitie's component isn't updated until next run
         let mut current_mesh = mesh.cloned();
 
-        if chunk.should_update_data {
+        if chunk.target_state.is_merge() && chunk.should_update_data {
             chunk.should_update_data = false;
 
             chunk.data_task = Some(provider.request_chunk(
@@ -225,8 +382,8 @@ fn chunk_system(
             chunk.should_update_mesh = true;
         }
 
-        if let Some(data) =
-            chunk.should_update_mesh.then_some(&chunk.data).cloned().flatten()
+        if let Some(data) = (chunk.target_state.is_merge() && chunk.should_update_mesh)
+            .then_some(&chunk.data).cloned().flatten()
         {
             chunk.should_update_mesh = false;
             chunk.mesh_subdivs = chunk.data_subdivs;
@@ -262,18 +419,21 @@ fn chunk_system(
                 commands.entity(chunk_entitiy).insert(new_mesh.clone());
                 current_mesh = Some(new_mesh);
                 
-                chunk.should_update_collider = true;
+                // TODO: Enable colliders
+                // chunk.should_update_collider = true;
             }
             else {
                 commands.entity(chunk_entitiy).remove::<Handle<Mesh>>();
             }
         }
 
-        if let Some(mesh_for_collider) = chunk.should_update_collider
+        if let Some(mesh_for_collider) = (chunk.target_state.is_merge() && chunk.should_update_collider)
             .then_some(current_mesh).flatten()
             .and_then(|handle| meshes.get(handle)).cloned()
         {
-            chunk.collider_subdivs = chunk.mesh_subdivs;
+            chunk.should_update_collider = false;
+            chunk.collider_subdivs = chunk.data_subdivs;
+
             let subdivs = chunk.mesh_subdivs + chunk.path.len();
             let target = renderer.options.max_subdivs;
             chunk.collider_task = Some(task_pool.spawn(async move {
