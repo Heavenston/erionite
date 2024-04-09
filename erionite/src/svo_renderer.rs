@@ -108,6 +108,11 @@ pub struct ChunkComponent {
     /// Full describes wether the chunk is splitted (Some) or merged (None)
     chunk_children: Option<[Entity; 8]>,
 
+    /// set to true on creation and set to false by the 
+    /// subdivs system
+    /// used to know if the chunk is waiting for a subdiv 'assignment'
+    waiting_for_subdivs: bool,
+
     should_update_data: bool,
     data_subdivs: u32,
     data_task: Option<Task<Arc<svo::TerrainCell>>>,
@@ -128,6 +133,8 @@ impl ChunkComponent {
             path,
             renderer,
 
+            waiting_for_subdivs: true,
+
             ..default()
         }
     }
@@ -145,6 +152,10 @@ impl ChunkComponent {
     }
 
     pub fn is_busy(&self) -> bool {
+        if self.waiting_for_subdivs {
+            return true;
+        }
+
         if self.target_state != ChunkMergeState::Merge {
             return false;
         }
@@ -245,7 +256,8 @@ fn chunks_subdivs_system(
         
         let subdivs = total_subdivs.saturating_sub(chunk.path.len());
        
-        if chunk.target_subdivs != subdivs {
+        if chunk.waiting_for_subdivs || chunk.target_subdivs != subdivs {
+            chunk.waiting_for_subdivs = false;
             chunk.should_update_data = true;
             chunk.target_subdivs = subdivs;
         }
@@ -343,7 +355,7 @@ fn chunk_split_merge_system(
         }
 
         if chunk.target_state.is_merge() {
-            let can_destroy_children = chunk.mesh_task.is_none();
+            let can_destroy_children = !chunk.is_busy();
 
             if can_destroy_children {
                 for childe in children_entities {
