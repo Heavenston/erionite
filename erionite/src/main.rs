@@ -98,7 +98,7 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut camera: ResMut<Cam>,
 ) {
-    let radius = 2000.;
+    let radius = 6_250.;
     let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(radius*2.));
 
     let mat = materials.add(StandardMaterial {
@@ -108,7 +108,7 @@ fn setup(
     commands.spawn(SvoRendererBundle {
         transform: TransformBundle::default(),
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
-            max_subdivs: 13,
+            max_subdivs: 15,
             min_subdivs: 4,
             chunk_falloff_multiplier: 20.,
             
@@ -136,11 +136,13 @@ fn setup(
         },
         ..default()
     });
+
+    let cam_pos = DVec3::new(0., radius+20., 0.);
     
     // camera
     camera.entity = Some(commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(0., (radius*4.) as f32, 0.)
-            .looking_at(Vec3::ZERO, Vec3::Y),
+        transform: Transform::from_translation(cam_pos.as_vec3())
+            .looking_at(cam_pos.as_vec3() + Vec3::Z, Vec3::Y),
         ..default()
     }).id());
     // // ui camera

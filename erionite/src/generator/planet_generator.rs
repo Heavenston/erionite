@@ -22,7 +22,7 @@ impl Generator for PlanetGenerator {
         let distance_noise = DistanceNoise::default();
 
         let heigth_noise = HybridMulti::<Perlin>::new(r.gen())
-            .set_frequency(1.)
+            .set_frequency(0.5)
             .set_octaves(5);
         let heigth_noise = ScalePoint::new(heigth_noise)
             .set_scale(1. / 70.);
