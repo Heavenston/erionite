@@ -1,6 +1,8 @@
 mod chunk_svo;
 use std::sync::Arc;
+use std::time::Duration;
 
+use bevy::time::common_conditions::on_timer;
 use ordered_float::OrderedFloat;
 use bevy::{ecs::system::EntityCommands, prelude::*, render::primitives::Aabb};
 use bevy_rapier3d::prelude::*;
@@ -24,7 +26,8 @@ impl Plugin for SvoRendererPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, (
             new_renderer_system,
-            dirty_chunks_drainer_system,
+            dirty_chunks_drainer_system
+                .run_if(on_timer(Duration::from_millis(500))),
             chunks_subdivs_system,
             chunk_split_merge_system,
             chunk_system,

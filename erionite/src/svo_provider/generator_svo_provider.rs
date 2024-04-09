@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use bevy::prelude::default;
+use bevy::utils::HashSet;
 use either::Either;
 use utils::DAabb;
 
@@ -18,7 +19,7 @@ pub struct GeneratorSvoProvider<G: Generator> {
     generator: Arc<G>,
 
     svo_data: Arc<Mutex<SvoData>>,
-    dirty_chunks: Arc<Mutex<Vec<svo::CellPath>>>,
+    dirty_chunks: Arc<Mutex<HashSet<svo::CellPath>>>,
 }
 
 impl<G: Generator + 'static> GeneratorSvoProvider<G> {
@@ -75,14 +76,15 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
                 *lock.root_svo.follow_internal_path(path) = result;
                 lock.root_svo.update_on_path(path);
 
-                *lock.generated.follow_path_mut(path).1 = svo::LeafCell {
-                    data: svo::StatBool(false),
-                }.into();
                 *lock.generated.follow_internal_path(path) = svo::Cell::new_with_depth(
                     subdivs,
                     svo::StatBool(true)
                 );
-                dirties.lock().unwrap().extend(path.neighbors().map(|(_, n)| n));
+                lock.generated.update_on_path(path);
+
+                let dds = path.neighbors().map(|(_, n)| n);
+                dirties.lock().unwrap()
+                    .extend(dds.flat_map(|n| n.parents().chain(std::iter::once(n))));
             }
             else {
                 lock = data.lock().unwrap();
@@ -93,6 +95,7 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
     }
 
     fn drain_dirty_chunks(&mut self) -> Box<[svo::CellPath]> {
-        std::mem::take(&mut *self.dirty_chunks.lock().unwrap()).into_boxed_slice()
+        std::mem::take(&mut *self.dirty_chunks.lock().unwrap())
+            .into_iter().collect::<Box<[_]>>()
     }
 }

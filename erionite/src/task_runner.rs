@@ -1,13 +1,11 @@
-use std::{cell::UnsafeCell, sync::{atomic::{self, AtomicBool}, Arc}};
+use std::sync::{atomic::{self, AtomicBool}, Arc, Mutex};
 
 #[derive(Debug)]
 struct TaskInner<T> {
     canceled: AtomicBool,
-    out: UnsafeCell<Option<T>>,
+    out: Mutex<Option<T>>,
     done: AtomicBool,
 }
-
-unsafe impl<T: Sync> Sync for TaskInner<T> { }
 
 #[derive(Debug)]
 pub struct Task<T> {
@@ -21,7 +19,14 @@ impl<T> Task<T> {
 
     pub fn join(&mut self) -> T {
         assert!(self.is_finished());
-        unsafe{&mut *self.inner.out.get()}.take().expect("Cannot join multiple times")
+        while Arc::strong_count(&self.inner) != 1 {
+            std::hint::spin_loop();
+        }
+
+        Arc::get_mut(&mut self.inner)
+            .expect("just confirmed we are the only one")
+            .out.get_mut().unwrap().take()
+            .expect("marked as finished")
     }
 }
 
@@ -47,9 +52,7 @@ pub fn spawn<T, F>(f: F) -> Task<T>
             return;
         }
         let out = f();
-        unsafe{
-            *inner_.out.get() = Some(out);
-        };
+        *inner_.out.lock().unwrap() = Some(out);
         inner_.done.store(true, atomic::Ordering::Relaxed);
     });
 
