@@ -10,10 +10,10 @@ pub struct DAabb {
 }
 
 impl DAabb {
-    pub fn new_center_size(center: DVec3, half_size: DVec3) -> Self {
+    pub fn new_center_size(center: DVec3, size: DVec3) -> Self {
         Self {
-            position: center - half_size,
-            size: half_size * 2.,
+            position: center - size / 2.,
+            size,
         }
     }
 

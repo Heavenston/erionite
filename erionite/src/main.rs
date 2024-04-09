@@ -41,6 +41,7 @@ fn setup_logger() -> Result<(), Box<dyn std::error::Error>> {
         })
         .level(LF::Info)
         .level_for("wgpu", LF::Error)
+        .level_for("wgpu_hal", LF::Error)
         .level_for("erionite", LF::Trace)
         .chain(std::io::stdout())
         .apply()?;
@@ -98,8 +99,13 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut camera: ResMut<Cam>,
 ) {
-    let radius = 6_250.;
-    let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(radius*2.));
+    let subdivs = 19u32;
+    let aabb_size = 2f64.powi(subdivs as i32);
+    let radius = aabb_size / 4.;
+    let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(aabb_size));
+
+    log::info!("AABB Size: {aabb_size}");
+    log::info!("Planet radius: {radius}");
 
     let mat = materials.add(StandardMaterial {
         ..default()
@@ -108,7 +114,7 @@ fn setup(
     commands.spawn(SvoRendererBundle {
         transform: TransformBundle::default(),
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
-            max_subdivs: 15,
+            max_subdivs: subdivs,
             min_subdivs: 4,
             chunk_falloff_multiplier: 20.,
             
@@ -130,10 +136,7 @@ fn setup(
     });
 
     commands.spawn(DirectionalLightBundle {
-        transform: Transform {
-            rotation: Quat::from_rotation_x(std::f32::consts::PI / 4.),
-            ..default()
-        },
+        transform: Transform::default(),
         ..default()
     });
 
