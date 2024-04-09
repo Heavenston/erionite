@@ -445,8 +445,7 @@ fn chunk_system(
                 commands.entity(chunk_entitiy).insert(new_mesh.clone());
                 current_mesh = Some(new_mesh);
                 
-                // TODO: Enable colliders
-                // chunk.should_update_collider = true;
+                chunk.should_update_collider = true;
             }
             else {
                 commands.entity(chunk_entitiy).remove::<Handle<Mesh>>();
