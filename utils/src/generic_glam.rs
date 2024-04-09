@@ -1,9 +1,10 @@
 use bevy_math::{bounding::Aabb3d, DVec3, Vec3};
 use num_traits::{Float, Num, NumAssign};
+use std::fmt::Debug;
 
 use crate::DAabb;
 
-pub trait GlamFloat: Float + NumAssign {
+pub trait GlamFloat: Debug + Float + NumAssign {
     type Aabb3d: AabbExt<Self>;
     type Vec3: Vec3Ext<Self>;
 
@@ -23,7 +24,7 @@ impl GlamFloat for f64 {
 }
 
 pub trait AabbExt<T: GlamFloat<Aabb3d = Self>>
-    where Self: Copy
+    where Self: Debug + Copy
 {
     fn min(&self) -> T::Vec3;
     fn max(&self) -> T::Vec3;
@@ -70,7 +71,7 @@ impl AabbExt<f64> for DAabb {
 }
 
 pub trait Vec3Ext<T: Num + Copy>
-    where Self: Copy
+    where Self: Debug + Copy
 {
     fn new(x: T, y: T, z: T) -> Self;
     fn from_array(a: [T; 3]) -> Self {
