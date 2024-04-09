@@ -23,6 +23,7 @@ impl Plugin for SvoRendererPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, (
             new_renderer_system,
+            dirty_chunks_drainer_system,
             chunks_subdivs_system,
             chunk_split_merge_system,
             chunk_system,
@@ -87,10 +88,6 @@ impl ChunkMergeState {
 
     pub fn is_split(self) -> bool {
         self == Self::Split
-    }
-
-    pub fn is_parent_merging(self) -> bool {
-        self == Self::ParentMerging
     }
 }
 
@@ -175,6 +172,26 @@ fn new_renderer_system(
         renderer.root_chunk = root_chunk_entitiy;
         if let Some(on_new_chunk) = &mut renderer.options.on_new_chunk {
             on_new_chunk(commands.entity(root_chunk_entitiy));
+        }
+    }
+}
+
+fn dirty_chunks_drainer_system(
+    mut providers: Query<(Entity, &mut SvoProviderComponent), With<SvoRendererComponent>>,
+    mut chunks: Query<&mut ChunkComponent>,
+) {
+    for (entity, mut provider) in &mut providers {
+        let dirties = provider.drain_dirty_chunks();
+        if dirties.len() == 0 {
+            continue;
+        }
+
+        // FIXME: May be too slow if there are lots of chunks
+        for mut chunk in chunks.iter_mut()
+            .filter(|chunk| chunk.renderer == entity)
+            .filter(|chunk| dirties.contains(&chunk.path))
+        {
+            chunk.should_update_data = true;
         }
     }
 }
