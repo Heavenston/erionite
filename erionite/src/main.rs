@@ -107,6 +107,8 @@ fn setup(
     log::info!("Planet radius: {radius}");
 
     let mat = materials.add(StandardMaterial {
+        perceptual_roughness: 0.8,
+        metallic: 0.,
         ..default()
     });
 
@@ -114,7 +116,7 @@ fn setup(
         transform: TransformBundle::default(),
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
             max_subdivs: subdivs,
-            min_subdivs: 4,
+            min_subdivs: 2,
             chunk_falloff_multiplier: 20.,
             
             chunk_split_subdivs: 6,
@@ -139,12 +141,13 @@ fn setup(
         ..default()
     });
 
-    let cam_pos = DVec3::new(0., radius+20., 0.);
+    // let cam_pos = DVec3::new(0., radius+20., 0.);
+    let cam_pos = DVec3::new(0., radius * 5., 0.);
     
     // camera
     camera.entity = Some(commands.spawn(Camera3dBundle {
         transform: Transform::from_translation(cam_pos.as_vec3())
-            .looking_at(cam_pos.as_vec3() + Vec3::Z, Vec3::Y),
+            .looking_at(Vec3::ZERO, Vec3::Y),
         ..default()
     }).id());
     // // ui camera
