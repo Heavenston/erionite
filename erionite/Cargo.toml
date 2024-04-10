@@ -1,6 +1,6 @@
 [package]
 name = "erionite"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
@@ -14,5 +14,5 @@ noise = "0.9.0"
 ordered-float = "4.2.0"
 rand = { version = "0.8.5", features = ["small_rng"] }
 rayon = "1.10.0"
-svo = { version = "0.1.0", path = "../svo" }
-utils = { version = "0.1.0", path = "../utils" }
+svo = { version = "*", path = "../svo" }
+utils = { version = "*", path = "../utils" }

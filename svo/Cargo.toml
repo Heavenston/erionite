@@ -1,6 +1,5 @@
 [package]
 name = "svo"
-version = "0.1.0"
 edition = "2021"
 
 [dependencies]
@@ -17,7 +16,7 @@ ordered-float = "4.2.0"
 rand = { version = "0.8.5", features = ["small_rng"] }
 rayon = "1.8.0"
 serde = { version = "1.0.195", features = ["derive", "rc"] }
-utils = { version = "0.1.0", path = "../utils" }
+utils = { version = "*", path = "../utils" }
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }

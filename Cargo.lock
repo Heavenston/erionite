@@ -1864,7 +1864,7 @@ dependencies = [
 
 [[package]]
 name = "erionite"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bevy",
  "bevy_rapier3d",
@@ -3774,7 +3774,7 @@ checksum = "f83ba502a3265efb76efb89b0a2f7782ad6f2675015d4ce37e4b547dda42b499"
 
 [[package]]
 name = "svo"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "arbitrary-int",
  "bevy_math",
@@ -4059,7 +4059,7 @@ checksum = "f962df74c8c05a667b5ee8bcf162993134c104e96440b663c8daa176dc772d8c"
 
 [[package]]
 name = "utils"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "arbitrary-int",
  "bevy_math",
