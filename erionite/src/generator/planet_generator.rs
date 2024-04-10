@@ -56,6 +56,20 @@ impl Generator for PlanetGenerator {
         let mut svo = svo::svo_from_sdf(move |&sp| {
             let spa = [sp.x, sp.y, sp.z].map(|x| x);
 
+            let planet_dist = spa.iter().map(|x| x*x).sum::<f64>();
+            if planet_dist < self.radius.powi(2) * 0.5 {
+                return svo::SdfSample {
+                    dist: planet_dist.sqrt() - self.radius,
+                    material: svo::TerrainCellKind::Stone,
+                };
+            }
+            if planet_dist > self.radius.powi(2) * 1.5 {
+                return svo::SdfSample {
+                    dist: planet_dist.sqrt() - self.radius,
+                    material: svo::TerrainCellKind::Air,
+                };
+            }
+
             let dist = final_noise.get(spa);
 
             let mut material = svo::TerrainCellKind::Air;
