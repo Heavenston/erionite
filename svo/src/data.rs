@@ -2,10 +2,10 @@
 use std::fmt::Debug;
 use either::Either;
 
-pub trait InternalData: Debug + Sized + Default {
+pub trait InternalData: Debug + Sized {
 }
 
-pub trait Data: Debug + Sized + Default {
+pub trait Data: Debug + Sized {
     type Internal: InternalData;
 }
 

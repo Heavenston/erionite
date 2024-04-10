@@ -14,7 +14,7 @@ pub use generic_glam::*;
 pub use replace_with::replace_with_or_abort as replace_with;
 
 use bevy_math::{BVec3, UVec3};
-use std::{mem::MaybeUninit, ops::{Add, Range, Sub}};
+use std::{mem::{ManuallyDrop, MaybeUninit}, ops::{Add, Range, Sub}};
 
 /// Copies the content of given arrays into a new bigger array.
 ///
@@ -53,6 +53,23 @@ pub fn join_arrays<T, const AS: usize, const BS: usize>(
     MaybeUninit::copy_from_slice(&mut out[AS..], &b);
 
     unsafe { MaybeUninit::array_assume_init(out) }
+}
+
+pub fn box_to_array<T, const SIZE: usize>(
+    slice: Box<[T]>,
+) -> Result<[T; SIZE], Box<[T]>> {
+    if slice.len() != SIZE {
+        return Err(slice);
+    }
+
+    unsafe {
+        let slice = ManuallyDrop::new(slice);
+        let mut out = MaybeUninit::<T>::uninit_array::<SIZE>();
+        for i in 0..SIZE {
+            out[i].write(std::ptr::read(&slice[i]));
+        }
+        Ok(MaybeUninit::array_assume_init(out))
+    }
 }
 
 pub trait AsVecExt {

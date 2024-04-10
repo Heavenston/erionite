@@ -10,4 +10,6 @@ pub trait SvoPtr<D: Data>: Sized + Deref<Target = Cell<D, Self>> {
 
     /// Explicit DerefMut as it can be costly like with Arc::make_mut
     fn make_mut(&mut self) -> &mut Cell<D, Self>;
+
+    fn into_inner(self) -> Cell<D, Self>;
 }

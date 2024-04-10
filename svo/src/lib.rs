@@ -40,12 +40,12 @@ impl<D: Data, Ptr: SvoPtr<D>> InternalCell<D, Ptr> {
     pub fn from_children(children: [impl Into<Ptr>; 8]) -> Self
         where D: AggregateData
     {
-        let mut this = Self {
+        let children = children.map(Into::into);
+        let data = D::aggregate(children.each_ref().map(|d| d.data()));
+        Self {
             children: children.map(Into::into),
-            data: D::Internal::default(),
-        };
-        this.shallow_update();
-        this
+            data,
+        }
     }
     
     pub fn get_child(&self, pos: u3) -> &Ptr {
@@ -152,25 +152,43 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     pub fn try_merge(&mut self) -> bool
         where D: MergeableData
     {
-        let Self::Internal(inner) = self
-        else { return true; };
+        let mut did_merge = false;
+        utils::replace_with(self, |this| {
+            let Self::Internal(InternalCell { data, children }) = this
+            else {
+                did_merge = true;
+                return this;
+            };
 
-        let Some(x) = inner.children.each_ref().try_map(|x| x.data().right())
-        else { return false; };
+            let Some(children_datas) = children.each_ref()
+                .try_map(|x| match &**x {
+                    Cell::Leaf(l) => Some(&l.data),
+                    _ => None,
+                })
+            else {
+                did_merge = false;
+                return Self::Internal(InternalCell { children, data });
+            };
 
-        if !D::can_merge(&inner.data, x)
-        { return false; }
+            if !D::can_merge(&data, children_datas) {
+                did_merge = false;
+                return Self::Internal(InternalCell { children, data });
+            }
 
-        let Some(taken) = inner.children
-            .each_mut()
-            .try_map(|x| x.make_mut().data_mut().right().map(std::mem::take))
-        else { unreachable!(); };
+            did_merge = true;
+
+            let taken = children
+                .map(|x| match x.into_inner() {
+                    Cell::Leaf(l) => l.data,
+                    _ => unreachable!("checked before"),
+                });
         
-        *self = LeafCell::new(
-            D::merge(std::mem::take(&mut inner.data), taken)
-        ).into();
+            LeafCell::new(
+                D::merge(data, taken)
+            ).into()
+        });
         
-        true
+        did_merge
     }
 
     /// If the current cell is a leaf node (or a packed leaf node)
@@ -179,14 +197,44 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     pub fn split(&mut self) -> bool
         where D: SplittableData
     {
-        let Some(data) = self.data_mut().right().map(std::mem::take)
-        else { return false; };
-        let (data, children) = data.split();
-        *self = InternalCell::<D, Ptr> {
-            children: children.map(|data| Ptr::new(LeafCell::new(data).into())),
-            data,
-        }.into();
-        true
+        let mut did = false;
+        utils::replace_with(self, |this| {
+            let leaf_data = match this {
+                Cell::Internal(_) => {
+                    did = false;
+                    return this;
+                },
+                Cell::Leaf(l) => {
+                    l.data
+                },
+                Cell::Packed(p) => match p.try_into_leaf() {
+                    Ok(l) => l.data,
+                    Err(p) => {
+                        did = false;
+                        return Cell::Packed(p);
+                    }
+                },
+            };
+
+            did = true;
+
+            let (data, children) = leaf_data.split();
+
+            InternalCell::<D, Ptr> {
+                children: children
+                    .map(|data| Ptr::new(LeafCell::new(data).into())),
+                data,
+            }.into()
+        });
+        did
+        // let Some(data) = self.data_mut().right().map(std::mem::take)
+        // else { return false; };
+        // let (data, children) = data.split();
+        // *self = InternalCell::<D, Ptr> {
+        //     children: children.map(|data| Ptr::new(LeafCell::new(data).into())),
+        //     data,
+        // }.into();
+        // true
     }
 
     pub fn full_split(&mut self, depth: usize)
@@ -416,6 +464,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// values.
     pub fn new_with_depth(depth: u32, data: D) -> Self
         where Ptr: Clone,
+              D::Internal: Default,
     {
         if depth == 0 {
             return LeafCell::new(data).into();
@@ -469,7 +518,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     }
 }
 
-impl<D: Data, Ptr: SvoPtr<D>> Default for Cell<D, Ptr> {
+impl<D: Data + Default, Ptr: SvoPtr<D>> Default for Cell<D, Ptr> {
     fn default() -> Self {
         Self::Leaf(LeafCell::new(D::default()))
     }

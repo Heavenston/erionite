@@ -1,4 +1,4 @@
-use std::{fmt::Debug, ops::Range};
+use std::{collections::VecDeque, fmt::Debug, ops::Range};
 
 use utils::AsVecExt;
 
@@ -233,8 +233,8 @@ impl<D: Data> PackedCell<D> {
     }
 
     pub fn new_default(depth: u32) -> Self
-        where D: Clone,
-              D::Internal: Clone,
+        where D: Default + Clone,
+              D::Internal: Default + Clone,
     {
         Self::new_filled(depth, Default::default(), Default::default())
     }
@@ -382,29 +382,37 @@ impl<D: Data> PackedCell<D> {
         self.levels.len() as u32
     }
 
-    /// Splitts the given 
-    pub fn split(mut self) -> (D::Internal, [PackedCell<D>; 8])
+    pub fn split(self) -> (D::Internal, [PackedCell<D>; 8])
         where D: SplittableData,
     {
         if self.depth() == 0 {
-            let (data, children) = std::mem::take(&mut self.leaf_level.data[0]).split();
+            let [data] = utils::box_to_array(self.leaf_level.data)
+                .expect("Depth is 0");
+            let (data, children) = data.split();
+
             let children = children.map(|d| PackedCell::new_leaf(d));
             return (data, children);
         }
 
-        let mut levels = self.levels;
+        // O(1)
+        let mut levels = VecDeque::from(Vec::from(self.levels));
 
-        let internal = std::mem::take(&mut levels[0].data[0]);
+        let first_level = levels.pop_front().expect("at least one level");
 
-        let mut splitted_levels = Vec::from(levels).into_iter()
-            .skip(1).map(|sl| sl.split())
+        let mut splitted_levels = levels.into_iter()
+            .map(|sl| sl.split())
             .collect_vec();
+        let mut splitted_leaf = self.leaf_level.split().map(Some);
         
         let children = CellPath::components().map(|comp| {
+            let comp_index = comp.value() as usize;
             let levels = splitted_levels.iter_mut()
-                .map(|levels| std::mem::replace(&mut levels[comp.value() as usize], PackedCellLevel::invalid_placeholder()))
+                .map(|levels| std::mem::replace(
+                    &mut levels[comp_index],
+                    PackedCellLevel::invalid_placeholder(),
+                ))
                 .collect_vec();
-            let leaf_level = self.leaf_level.take_split(comp);
+            let leaf_level = splitted_leaf[comp_index].take().expect("only once");
 
             PackedCell {
                 levels: levels.into_boxed_slice(),
@@ -412,13 +420,27 @@ impl<D: Data> PackedCell<D> {
             }
         });
 
+        let [internal] = utils::box_to_array(first_level.data)
+            .expect("First level must only have one element");
+
         (internal, children)
+    }
+
+    pub fn try_into_leaf(self) -> Result<LeafCell<D>, Self> {
+        if self.depth() > 0 {
+            return Err(self);
+        }
+
+        let [data] = utils::box_to_array(self.leaf_level.data)
+            .expect("First level must only have one element");
+
+        Ok(LeafCell { data })
     }
 }
 
 impl<D> Default for PackedCell<D>
-    where D: Data + Clone,
-          D::Internal: Clone,
+    where D: Data + Clone + Default,
+          D::Internal: Clone + Default,
 {
     fn default() -> Self {
         Self::new_default(0)

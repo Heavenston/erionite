@@ -47,4 +47,8 @@ impl<D> SvoPtr<D> for ArcPtr<D>
     fn make_mut(&mut self) -> &mut Cell<D, Self> {
         Arc::make_mut(&mut self.0)
     }
+
+    fn into_inner(self) -> Cell<D, Self> {
+        Arc::try_unwrap(self.0).unwrap_or_else(|arc| (&*arc).clone())
+    }
 }
