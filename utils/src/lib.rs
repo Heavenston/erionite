@@ -5,15 +5,16 @@
 #![feature(maybe_uninit_write_slice)]
 
 mod aabb;
-use std::{mem::MaybeUninit, ops::{Add, Range, Sub}};
-
 pub use aabb::*;
 mod every_cubes;
 pub use every_cubes::*;
 mod generic_glam;
 pub use generic_glam::*;
 
+pub use replace_with::replace_with_or_abort as replace_with;
+
 use bevy_math::{BVec3, UVec3};
+use std::{mem::MaybeUninit, ops::{Add, Range, Sub}};
 
 /// Copies the content of given arrays into a new bigger array.
 ///
@@ -52,10 +53,6 @@ pub fn join_arrays<T, const AS: usize, const BS: usize>(
     MaybeUninit::copy_from_slice(&mut out[AS..], &b);
 
     unsafe { MaybeUninit::array_assume_init(out) }
-}
-
-#[test]
-fn join_arrays_test() {
 }
 
 pub trait AsVecExt {
