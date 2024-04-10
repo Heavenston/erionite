@@ -470,11 +470,12 @@ fn kernel(
 
             state.set_normal(normal);
 
-            state.set_color(mat[0]);
+            let color: Color = mat.iter().copied().reduce(|a, b| a + b).unwrap();
+
+            state.set_color(color * (1./3.));
+
             state.add_vertex(arr[0]);
-            state.set_color(mat[1]);
             state.add_vertex(arr[1]);
-            state.set_color(mat[2]);
             state.add_vertex(arr[2]);
         });
 }
