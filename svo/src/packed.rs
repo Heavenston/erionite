@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, ops::Range};
 
 use utils::AsVecExt;
 
@@ -10,6 +10,13 @@ struct PackedCellLevel<D> {
 }
 
 impl<D> PackedCellLevel<D> {
+    /// Create an *invalid* level
+    fn invalid_placeholder() -> Self {
+        Self {
+            data: Box::new([]),
+        }
+    }
+    
     fn new_filled(depth: u32, data: D) -> Self
         where D: Clone
     {
@@ -29,15 +36,46 @@ impl<D> PackedCellLevel<D> {
         }
     }
 
-    fn split_sub(&self, comp: u3) -> Self
-        where D: Clone
-    {
-        let sub_count = self.data.len() / 8;
-        let sub_i: usize = CellPath::new().with_push_back(comp).index().try_into().unwrap();
+    fn new_leaf(data: D) -> Self {
+        Self {
+            data: vec![data].into_boxed_slice(),
+        }
+    }
 
-        let range = sub_count*sub_i..sub_count*(sub_i+1);
-        let slice = self.data[range].iter().cloned().collect::<Box<[D]>>();
+    fn sub_range(&self, comp: u3) -> Range<usize> {
+        let sub_count = self.data.len() / 8;
+        let sub_i: usize = CellPath::new().with_push(comp).index().try_into().unwrap();
+        
+        sub_count*sub_i..sub_count*(sub_i+1)
+    }
+
+    fn take_split(&mut self, comp: u3) -> Self
+        where D: Default,
+    {
+        let range = self.sub_range(comp);
+        let slice = self.data[range].iter_mut().map(std::mem::take).collect::<Box<[D]>>();
         PackedCellLevel { data: slice }
+    }
+
+    fn split(self) -> [Self; 8] {
+        let sub_count = self.data.len() / 8;
+
+        let mut out = [
+            Self::invalid_placeholder(), Self::invalid_placeholder(),
+            Self::invalid_placeholder(), Self::invalid_placeholder(),
+            Self::invalid_placeholder(), Self::invalid_placeholder(),
+            Self::invalid_placeholder(), Self::invalid_placeholder(),
+        ];
+
+        debug_assert!(self.data.len() == sub_count * 8);
+        // conversion to vec should be free, only here to allow into_iter
+        Vec::from(self.data).into_iter().chunks(sub_count).into_iter()
+            .enumerate()
+            .for_each(|(i, d)| {
+                out[i].data = d.collect();
+            });
+
+        out
     }
 }
 
@@ -180,7 +218,10 @@ pub struct PackedCell<D: Data> {
 }
 
 impl<D: Data> PackedCell<D> {
-    pub fn new_filled(depth: u32, internal_data: D::Internal, data: D) -> Self {
+    pub fn new_filled(depth: u32, internal_data: D::Internal, data: D) -> Self
+        where D: Clone,
+              D::Internal: Clone,
+    {
         let levels = (0..depth)
             .map(|level| PackedCellLevel::new_filled(level, internal_data.clone()))
             .collect::<Box<[_]>>();
@@ -191,8 +232,19 @@ impl<D: Data> PackedCell<D> {
         }
     }
 
-    pub fn new_default(depth: u32) -> Self {
+    pub fn new_default(depth: u32) -> Self
+        where D: Clone,
+              D::Internal: Clone,
+    {
         Self::new_filled(depth, Default::default(), Default::default())
+    }
+
+    /// Equivalent to [Self::new_filled(0, data)] but without the D: Clone requirement
+    pub fn new_leaf(data: D) -> Self {
+        Self {
+            levels: vec![].into_boxed_slice(),
+            leaf_level: PackedCellLevel::new_leaf(data),
+        }
     }
 
     /// used for update_{all, on_path}
@@ -331,40 +383,50 @@ impl<D: Data> PackedCell<D> {
     }
 
     /// Splitts the given 
-    pub fn split(&self) -> [PackedCell<D>; 8] {
+    pub fn split(mut self) -> (D::Internal, [PackedCell<D>; 8])
+        where D: SplittableData,
+    {
         if self.depth() == 0 {
-            return [
-                self.clone(), self.clone(),
-                self.clone(), self.clone(),
-                self.clone(), self.clone(),
-                self.clone(), self.clone(),
-            ];
+            let (data, children) = std::mem::take(&mut self.leaf_level.data[0]).split();
+            let children = children.map(|d| PackedCell::new_leaf(d));
+            return (data, children);
         }
 
-        CellPath::components().map(|comp| {
-            let levels = self.levels.iter().skip(1)
-                .map(|level| level.split_sub(comp))
+        let mut levels = self.levels;
+
+        let internal = std::mem::take(&mut levels[0].data[0]);
+
+        let mut splitted_levels = Vec::from(levels).into_iter()
+            .skip(1).map(|sl| sl.split())
+            .collect_vec();
+        
+        let children = CellPath::components().map(|comp| {
+            let levels = splitted_levels.iter_mut()
+                .map(|levels| std::mem::replace(&mut levels[comp.value() as usize], PackedCellLevel::invalid_placeholder()))
                 .collect_vec();
-            let leaf_level = self.leaf_level.split_sub(comp);
+            let leaf_level = self.leaf_level.take_split(comp);
 
             PackedCell {
                 levels: levels.into_boxed_slice(),
                 leaf_level,
             }
-        })
+        });
+
+        (internal, children)
     }
 }
 
 impl<D> Default for PackedCell<D>
-    where D: Data
+    where D: Data + Clone,
+          D::Internal: Clone,
 {
     fn default() -> Self {
         Self::new_default(0)
     }
 }
 
-impl<D: Data> Into<Cell<D>> for PackedCell<D> {
-    fn into(self) -> Cell<D> {
+impl<D: Data, Ptr: SvoPtr<D>> Into<Cell<D, Ptr>> for PackedCell<D> {
+    fn into(self) -> Cell<D, Ptr> {
         Cell::Packed(self)
     }
 }

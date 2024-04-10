@@ -29,6 +29,19 @@ impl<T: Default + Debug + PrimInt> From<StatInt<T>> for crate::LeafCell<StatInt<
     }
 }
 
+impl<T: Default + Debug + PrimInt> crate::SplittableData for StatInt<T> {
+    fn split(self) -> (Self::Internal, [Self; 8]) {
+        (
+            Self::Internal {
+                min: self.0,
+                max: self.0,
+                average: self.0,
+            },
+            [self; 8],
+        )
+    }
+}
+
 impl<T: Default + Debug + PrimInt> crate::MergeableData for StatInt<T> {
     fn can_merge(
         _this: &InnerStatInt<T>,

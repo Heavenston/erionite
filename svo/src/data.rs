@@ -2,12 +2,10 @@
 use std::fmt::Debug;
 use either::Either;
 
-pub trait InternalData: Debug + Sized + Default + Clone {
+pub trait InternalData: Debug + Sized + Default {
 }
 
-impl InternalData for () {  }
-
-pub trait Data: Debug + Sized + Default + Clone {
+pub trait Data: Debug + Sized + Default {
     type Internal: InternalData;
 }
 
@@ -20,6 +18,18 @@ pub type EitherDataMut<'a, D: Data> = Either<& 'a mut D::Internal, & 'a mut D>;
 
 impl Data for () {
     type Internal = ();
+}
+
+impl InternalData for () {  }
+
+impl SplittableData for () {
+    fn split(self) -> (Self::Internal, [Self; 8]) {
+        ((), [(); 8])
+    }
+}
+
+pub trait SplittableData: Data {
+    fn split(self) -> (Self::Internal, [Self; 8]);
 }
 
 pub trait MergeableData: Data {

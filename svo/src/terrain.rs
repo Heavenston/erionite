@@ -68,6 +68,12 @@ impl Data for TerrainCellData {
 
 impl InternalData for TerrainCellData {  }
 
+impl SplittableData for TerrainCellData {
+    fn split(self) -> (Self::Internal, [Self; 8]) {
+        (self, [self; 8])
+    }
+}
+
 impl AggregateData for TerrainCellData {
     fn aggregate<'a>(d: [EitherDataRef<Self>; 8]) -> Self {
         let d = d.map(|x| x.into_inner());
