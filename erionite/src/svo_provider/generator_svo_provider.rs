@@ -2,16 +2,46 @@ use std::sync::{Arc, Mutex};
 
 use bevy::prelude::default;
 use bevy::utils::HashSet;
-use either::Either;
-use svo::StatInt;
 use utils::DAabb;
 
 use crate::task_runner::{self, Task};
 use crate::generator::Generator;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GeneratedDepthData(pub i64);
+
+impl Default for GeneratedDepthData {
+    fn default() -> Self {
+        Self(-1)
+    }
+}
+
+impl svo::Data for GeneratedDepthData {
+    type Internal = GeneratedDepthData;
+}
+
+impl svo::InternalData for GeneratedDepthData {}
+
+impl svo::SplittableData for GeneratedDepthData {
+    fn split(self) -> (Self::Internal, [Self; 8]) {
+        (
+            self,
+            [Self(self.0-1); 8]
+        )
+    }
+}
+
+impl svo::AggregateData for GeneratedDepthData {
+    fn aggregate<'a>(
+        children: [svo::EitherDataRef<Self>; 8]
+    ) -> Self::Internal {
+        Self(children.into_iter().map(|c| c.into_inner().0).min().expect("8") + 1)
+    }
+}
+
 struct SharedData {
     root_svo: svo::TerrainCell,
-    generated: svo::Cell<svo::StatInt<u32>>,
+    generated: svo::Cell<GeneratedDepthData>,
 }
 
 pub struct GeneratorSvoProvider<G: Generator> {
@@ -37,7 +67,9 @@ impl<G: Generator + 'static> GeneratorSvoProvider<G> {
 
             svo_data: Arc::new(Mutex::new(SharedData {
                 root_svo,
-                generated: svo::LeafCell::new(StatInt(init_depth)).into(),
+                generated: svo::LeafCell::new(
+                    GeneratedDepthData(init_depth.into())
+                ).into(),
             })),
             dirty_chunks: default(),
         }
@@ -60,11 +92,9 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
             let must_regen = {
                 let lock = data.lock().unwrap();
                 let (found_path, found) = lock.generated.follow_path(path);
-                let gen_depth = match found.data() {
-                    Either::Left(l) => l.min,
-                    Either::Right(r) => r.0,
-                };
-                gen_depth + found_path.len() < subdivs + path.len()
+                (found.data().into_inner().0 + i64::from(found_path.len()))
+                    <
+                From::from(subdivs + path.len())
             };
             let mut lock;
             if must_regen {
@@ -78,7 +108,7 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
                 lock.root_svo.update_on_path(path);
 
                 *lock.generated.follow_internal_path(path) =
-                    svo::LeafCell::new(StatInt(subdivs)).into();
+                    svo::LeafCell::new(GeneratedDepthData(subdivs.into())).into();
                 lock.generated.update_on_path(path);
 
                 dirties.lock().unwrap()
