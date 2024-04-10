@@ -56,8 +56,6 @@ fn main() {
         .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
         .add_plugins(bevy::diagnostic::LogDiagnosticsPlugin::default())
 
-        .add_plugins(RapierDebugRenderPlugin::default())
-
         .add_plugins((
             DefaultPlugins.build().disable::<bevy::log::LogPlugin>(),
             RapierPhysicsPlugin::<NoUserData>::default(),
@@ -120,7 +118,7 @@ fn setup(
             chunk_falloff_multiplier: 20.,
             
             chunk_split_subdivs: 6,
-            chunk_merge_subdivs: 5,
+            chunk_merge_subdivs: 4,
 
             root_aabb: aabb,
             on_new_chunk: Some(Box::new(move |mut commands: EntityCommands<'_>| {

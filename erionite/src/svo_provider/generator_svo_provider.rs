@@ -3,14 +3,15 @@ use std::sync::{Arc, Mutex};
 use bevy::prelude::default;
 use bevy::utils::HashSet;
 use either::Either;
+use svo::StatInt;
 use utils::DAabb;
 
 use crate::task_runner::{self, Task};
 use crate::generator::Generator;
 
-struct SvoData {
+struct SharedData {
     root_svo: svo::TerrainCell,
-    generated: svo::Cell<svo::StatBool>,
+    generated: svo::Cell<svo::StatInt<u32>>,
 }
 
 pub struct GeneratorSvoProvider<G: Generator> {
@@ -18,7 +19,7 @@ pub struct GeneratorSvoProvider<G: Generator> {
 
     generator: Arc<G>,
 
-    svo_data: Arc<Mutex<SvoData>>,
+    svo_data: Arc<Mutex<SharedData>>,
     dirty_chunks: Arc<Mutex<HashSet<svo::CellPath>>>,
 }
 
@@ -34,9 +35,9 @@ impl<G: Generator + 'static> GeneratorSvoProvider<G> {
             aabb,
             generator,
 
-            svo_data: Arc::new(Mutex::new(SvoData {
+            svo_data: Arc::new(Mutex::new(SharedData {
                 root_svo,
-                generated: svo::Cell::new_with_depth(init_depth, svo::StatBool(true)),
+                generated: svo::LeafCell::new(StatInt(init_depth)).into(),
             })),
             dirty_chunks: default(),
         }
@@ -58,12 +59,12 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
         task_runner::spawn(move || {
             let must_regen = {
                 let lock = data.lock().unwrap();
-                let (fpath, cell) = lock.generated.follow_path(path);
-                let already_gen = fpath == path && match cell.data() {
-                    Either::Left(l) => l.all,
+                let (found_path, found) = lock.generated.follow_path(path);
+                let gen_depth = match found.data() {
+                    Either::Left(l) => l.min,
                     Either::Right(r) => r.0,
-                } && cell.depth() >= subdivs;
-                !already_gen
+                };
+                gen_depth + found_path.len() < subdivs + path.len()
             };
             let mut lock;
             if must_regen {
@@ -76,15 +77,17 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
                 *lock.root_svo.follow_internal_path(path) = result;
                 lock.root_svo.update_on_path(path);
 
-                *lock.generated.follow_internal_path(path) = svo::Cell::new_with_depth(
-                    subdivs,
-                    svo::StatBool(true)
-                );
+                *lock.generated.follow_internal_path(path) =
+                    svo::LeafCell::new(StatInt(subdivs)).into();
                 lock.generated.update_on_path(path);
 
-                let dds = path.neighbors().map(|(_, n)| n);
                 dirties.lock().unwrap()
-                    .extend(dds.flat_map(|n| n.parents().chain(std::iter::once(n))));
+                    .extend(
+                        path.neighbors().map(|(_, n)| n)
+                            .flat_map(|n|
+                                n.parents().chain(std::iter::once(n))
+                            )
+                    );
             }
             else {
                 lock = data.lock().unwrap();
