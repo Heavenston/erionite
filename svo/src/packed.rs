@@ -42,21 +42,6 @@ impl<D> PackedCellLevel<D> {
         }
     }
 
-    fn sub_range(&self, comp: u3) -> Range<usize> {
-        let sub_count = self.data.len() / 8;
-        let sub_i: usize = CellPath::new().with_push(comp).index().try_into().unwrap();
-        
-        sub_count*sub_i..sub_count*(sub_i+1)
-    }
-
-    fn take_split(&mut self, comp: u3) -> Self
-        where D: Default,
-    {
-        let range = self.sub_range(comp);
-        let slice = self.data[range].iter_mut().map(std::mem::take).collect::<Box<[D]>>();
-        PackedCellLevel { data: slice }
-    }
-
     fn split(self) -> [Self; 8] {
         let sub_count = self.data.len() / 8;
 
