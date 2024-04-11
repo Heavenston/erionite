@@ -77,6 +77,10 @@ impl<G: Generator + 'static> GeneratorSvoProvider<G> {
 }
 
 impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
+    fn update(&mut self) {
+        
+    }
+
     fn request_chunk(
         &mut self,
         path: svo::CellPath,

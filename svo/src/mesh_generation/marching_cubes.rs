@@ -449,12 +449,7 @@ fn kernel(
             edges[i] = a + -da * (b - a) / (db - da);
             // edges[i] = (a + b) / 2.;
             let kind = if db > da { sa } else { sb }.1;
-            edges_mats[i] = match kind {
-                TerrainCellKind::Invalid => Color::rgba(0.,0.,0.,0.),
-                TerrainCellKind::Air => Color::rgba(1.,1.,1.,0.),
-                TerrainCellKind::StoneDarker => Color::rgb(0.6, 0.6, 0.6),
-                TerrainCellKind::Stone => Color::rgb(0.3, 0.3, 0.3),
-            };
+            edges_mats[i] = kind.color();
         });
     
     TRIANGULATIONS[id as usize].into_iter()

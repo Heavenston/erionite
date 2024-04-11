@@ -1,3 +1,5 @@
+use bevy_render::color::Color;
+
 use super::*;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -8,6 +10,7 @@ pub enum TerrainCellKind {
     Air,
     StoneDarker,
     Stone,
+    Pink,
 }
 
 impl TryFrom<u8> for TerrainCellKind {
@@ -19,7 +22,20 @@ impl TryFrom<u8> for TerrainCellKind {
             1 => Ok(Self::Air),
             2 => Ok(Self::StoneDarker),
             3 => Ok(Self::Stone),
+            4 => Ok(Self::Stone),
             _ => Err(()),
+        }
+    }
+}
+
+impl TerrainCellKind {
+    pub fn color(&self) -> Color {
+        match self {
+            TerrainCellKind::Invalid => Color::rgba(0.,0.,0.,0.),
+            TerrainCellKind::Air => Color::rgba(1.,1.,1.,0.),
+            TerrainCellKind::StoneDarker => Color::rgb(0.6, 0.6, 0.6),
+            TerrainCellKind::Stone => Color::rgb(0.3, 0.3, 0.3),
+            TerrainCellKind::Pink => Color::rgb(0.988, 0.408, 0.804),
         }
     }
 }

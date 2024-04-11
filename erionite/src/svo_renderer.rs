@@ -30,6 +30,7 @@ impl Plugin for SvoRendererPlugin {
             chunks_subdivs_system,
             chunk_split_merge_system,
             chunk_system,
+            provider_updates_system,
         ).chain());
     }
 }
@@ -207,6 +208,14 @@ fn dirty_chunks_drainer_system(
         {
             chunk.should_update_data = true;
         }
+    }
+}
+
+fn provider_updates_system(
+    mut providers: Query<&mut SvoProviderComponent, With<SvoRendererComponent>>,
+) {
+    for mut provider in &mut providers {
+        provider.update();
     }
 }
 

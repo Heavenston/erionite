@@ -7,6 +7,9 @@ use std::sync::Arc;
 use bevy::ecs::component::Component;
 
 pub trait SvoProvider {
+    /// Called mutliple times a second (may be bevy's Update or FixedUpdate schedule)
+    fn update(&mut self) {}
+
     fn request_chunk(
         &mut self,
         path: svo::CellPath,

@@ -1,3 +1,4 @@
+use ordered_float::OrderedFloat;
 use rand::prelude::*;
 
 use super::*;
@@ -52,6 +53,9 @@ impl Generator for PlanetGenerator {
         let stone_darker_noise = ScalePoint::new(
             Perlin::new(r.gen())
         ).set_scale(1. / 100.);
+        let pink_noise = ScalePoint::new(
+            Perlin::new(r.gen())
+        ).set_scale(1. / 1.);
 
         let mut svo = svo::svo_from_sdf(move |&sp| {
             let spa = [sp.x, sp.y, sp.z].map(|x| x);
@@ -74,16 +78,11 @@ impl Generator for PlanetGenerator {
 
             let mut material = svo::TerrainCellKind::Air;
             if dist <= 0. {
-                let stone_sample = stone_noise.get(spa);
-                let stone_darker_sample = stone_darker_noise.get(spa);
-                let max = [stone_sample, stone_darker_sample].map(ordered_float::OrderedFloat)
-                    .into_iter().max().unwrap().0;
-                if max == stone_sample {
-                    material = svo::TerrainCellKind::Stone;
-                }
-                else {
-                    material = svo::TerrainCellKind::StoneDarker;
-                }
+                material = [
+                    (svo::TerrainCellKind::Stone, stone_noise.get(spa)),
+                    (svo::TerrainCellKind::StoneDarker, stone_darker_noise.get(spa)),
+                    (svo::TerrainCellKind::Pink, pink_noise.get(spa)),
+                ].into_iter().max_by_key(|(_, v)| OrderedFloat(*v)).unwrap().0;
             }
 
             svo::SdfSample { dist, material }
