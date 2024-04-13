@@ -35,7 +35,7 @@ impl TerrainCellKind {
             TerrainCellKind::Air => Color::rgba(1.,1.,1.,0.),
             TerrainCellKind::StoneDarker => Color::rgb(0.6, 0.6, 0.6),
             TerrainCellKind::Stone => Color::rgb(0.3, 0.3, 0.3),
-            TerrainCellKind::Pink => Color::rgb(0.988, 0.408, 0.804),
+            TerrainCellKind::Pink => Color::rgb(1., 0., 0.69),
         }
     }
 }
