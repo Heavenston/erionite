@@ -1,25 +1,77 @@
-use std::sync::{atomic::{self, AtomicBool, AtomicU32}, Arc, Mutex};
+use std::{ops::Deref, sync::{atomic::{self, AtomicBool, AtomicU32}, Arc, Mutex, MutexGuard}};
 use atomic::Ordering::Relaxed;
 
-#[derive(Debug)]
+#[derive(derivative::Derivative)]
+#[derivative(Debug, Default(bound = ""))]
 struct LockedTaskInner<T> {
+    #[derivative(Debug="ignore")]
+    thens: Vec<Box<dyn FnOnce(&T) + Send + Sync + 'static>>,
     out: Option<T>,
 }
 
-impl<T> Default for LockedTaskInner<T> {
-    fn default() -> Self {
-        Self {
-            out: None,
-        }
-    }
-}
-
 #[derive(Debug)]
-struct TaskShared<T> {
+pub struct TaskShared<T> {
     inner: Mutex<LockedTaskInner<T>>,
     done: AtomicBool,
 
     owner_count: AtomicU32,
+}
+
+impl<T> TaskShared<T> {
+    pub fn finished(&self) -> bool {
+        self.done.load(Relaxed)
+    }
+
+    /// The given function is called when the task is finished by the
+    /// thread that calls [TaskHandle::finish], or by this thread right now if the task
+    /// is already finished and the inner value has not been taken by
+    /// a call to [Task::try_join]
+    pub fn then(&self, then: impl FnOnce(&T) + Send + Sync + 'static) {
+        if self.finished() {
+            if let Some(v) = &self.inner.lock().unwrap().out {
+                then(v);
+            }
+
+            return
+        }
+
+        self.inner.lock().unwrap().thens.push(Box::new(then));
+    }
+
+    /// Util function,
+    /// Like [Self::task] but returns a task that finishes with the then
+    /// function's return value.
+    pub fn then_task<Out: Send + Sync + 'static>(
+        &self, then: impl FnOnce(&T) -> Out + Send + Sync + 'static
+    ) -> Task<Out> {
+        let task = Task::new();
+        let handle = task.handle();
+        self.then(move |val| {
+            let res = then(val);
+            handle.finish(res);
+        });
+        task
+    }
+
+    pub fn peek<'a>(&'a self) -> Option<impl Deref<Target = T> + 'a> {
+        struct InnerRef<'a, T> {
+            guard: MutexGuard<'a, LockedTaskInner<T>>,
+        }
+
+        impl<'a, T> Deref for InnerRef<'a, T> {
+            type Target = T;
+
+            fn deref(&self) -> &Self::Target {
+                &self.guard.out.as_ref().expect("checked before")
+            }
+        }
+
+        let guard = self.inner.lock().unwrap();
+        if guard.out.is_none() {
+            return None;
+        }
+        Some(InnerRef { guard })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -28,12 +80,10 @@ pub struct TaskHandle<T> {
 }
 
 impl<T> TaskHandle<T> {
+    // would not make sense for Task to have this method as if a Task exist it
+    // is not canceled
     pub fn canceled(&self) -> bool {
         self.shared.owner_count.load(Relaxed) == 0
-    }
-
-    pub fn finished(&self) -> bool {
-        self.canceled() || self.shared.done.load(Relaxed)
     }
 
     pub fn upgrade(&self) -> Option<Task<T>> {
@@ -51,7 +101,7 @@ impl<T> TaskHandle<T> {
         }
 
         Some(Task {
-            inner: Arc::clone(&self.shared),
+            shared: Arc::clone(&self.shared),
         })
     }
 
@@ -66,6 +116,10 @@ impl<T> TaskHandle<T> {
             return false;
         }
 
+        for then in lock.thens.drain(..) {
+            then(&val);
+        }
+
         lock.out = Some(val);
         self.shared.done.store(true, Relaxed);
         
@@ -78,17 +132,25 @@ impl<T> TaskHandle<T> {
     }
 }
 
+impl<T> Deref for TaskHandle<T> {
+    type Target = TaskShared<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.shared
+    }
+}
+
 /// can be cloned
-/// all clones droped -> task cancel
+/// all clones dropped -> task cancelled
 #[derive(Debug)]
 pub struct Task<T> {
-    inner: Arc<TaskShared<T>>,
+    shared: Arc<TaskShared<T>>,
 }
 
 impl<T> Task<T> {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(TaskShared::<T> {
+            shared: Arc::new(TaskShared::<T> {
                 inner: Default::default(),
                 done: AtomicBool::new(false),
                 owner_count: AtomicU32::new(1),
@@ -97,16 +159,12 @@ impl<T> Task<T> {
     }
 
     pub fn handle(&self) -> TaskHandle<T> {
-        TaskHandle { shared: Arc::clone(&self.inner) }
-    }
-
-    pub fn finished(&self) -> bool {
-        self.inner.done.load(Relaxed)
+        TaskHandle { shared: Arc::clone(&self.shared) }
     }
 
     /// The task will never be cancelled
     pub fn detach(&self) {
-        self.inner.owner_count.fetch_add(1, Relaxed);
+        self.shared.owner_count.fetch_add(1, Relaxed);
     }
 
     pub fn try_join(&self) -> Option<T> {
@@ -114,22 +172,30 @@ impl<T> Task<T> {
             return None;
         }
 
-        self.inner.inner.lock().unwrap().out.take()
+        self.shared.inner.lock().unwrap().out.take()
     }
 }
 
 impl<T> Drop for Task<T> {
     fn drop(&mut self) {
-        self.inner.owner_count.fetch_sub(1, Relaxed);
+        self.shared.owner_count.fetch_sub(1, Relaxed);
     }
 }
 
 impl<T> Clone for Task<T> {
     fn clone(&self) -> Self {
-        self.inner.owner_count.fetch_add(1, Relaxed);
+        self.shared.owner_count.fetch_add(1, Relaxed);
         Self {
-            inner: Arc::clone(&self.inner),
+            shared: Arc::clone(&self.shared),
         }
+    }
+}
+
+impl<T> Deref for Task<T> {
+    type Target = TaskShared<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.shared
     }
 }
 
@@ -146,5 +212,133 @@ impl<T> OptionTaskExt<T> for Option<Task<T>> {
         }
 
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simple() {
+        let task = Task::<u32>::new();
+
+        assert!(!task.finished());
+
+        let handle = task.handle();
+
+        assert!(!handle.finished());
+        assert!(!handle.canceled());
+        assert!(!task.finished());
+
+        assert_eq!(task.peek().map(|v| *v), None);
+        assert_eq!(handle.peek().map(|v| *v), None);
+
+        assert!(handle.try_finish(5));
+
+        assert_eq!(task.peek().map(|v| *v), Some(5));
+        assert_eq!(handle.peek().map(|v| *v), Some(5));
+
+        assert!(handle.finished());
+        assert!(!handle.canceled());
+        assert!(task.finished());
+
+        assert!(!handle.try_finish(10));
+
+        assert_eq!(task.peek().map(|v| *v), Some(5));
+        assert_eq!(handle.peek().map(|v| *v), Some(5));
+
+        assert!(handle.finished());
+        assert!(!handle.canceled());
+        assert!(task.finished());
+
+        assert_eq!(task.try_join(), Some(5));
+
+        assert_eq!(task.peek().map(|v| *v), None);
+        assert_eq!(handle.peek().map(|v| *v), None);
+    }
+
+    #[test]
+    fn test_cancellation() {
+        let task = Task::<u32>::new();
+
+        let handle = task.handle();
+
+        assert!(!handle.canceled());
+        assert!(!handle.finished());
+        assert!(handle.upgrade().is_some());
+        assert_eq!(handle.peek().map(|v| *v), None);
+
+        drop(task);
+
+        assert!(handle.canceled());
+        assert!(!handle.finished());
+        assert!(handle.upgrade().is_none());
+        assert_eq!(handle.peek().map(|v| *v), None);
+
+        assert!(handle.try_finish(5));
+
+        assert!(handle.canceled());
+        assert!(handle.finished());
+        assert!(handle.upgrade().is_none());
+        assert_eq!(handle.peek().map(|v| *v), Some(5));
+    }
+
+    #[test]
+    fn test_thens_simple() {
+        let task1 = Task::<&'static str>::new();
+        let task2 = Task::<&'static str>::new();
+        let task3 = Task::<&'static str>::new();
+        let task4 = Task::<&'static str>::new();
+
+        task1.then({
+            let handle = task2.handle();
+            move |&val1| {
+                assert_eq!(val1, "task1");
+                handle.finish("task2");
+            }
+        });
+
+        assert_eq!(task1.peek().map(|x| *x), None);
+        assert_eq!(task2.peek().map(|x| *x), None);
+        assert_eq!(task3.peek().map(|x| *x), None);
+
+        task1.handle().finish("task1");
+
+        assert_eq!(task1.peek().map(|x| *x), Some("task1"));
+        assert_eq!(task2.peek().map(|x| *x), Some("task2"));
+        assert_eq!(task3.peek().map(|x| *x), None);
+
+        task2.then({
+            let handle = task3.handle();
+            move |&val2| {
+                assert_eq!(val2, "task2");
+                handle.finish("task3");
+            }
+        });
+
+        assert_eq!(task1.peek().map(|x| *x), Some("task1"));
+        assert_eq!(task2.peek().map(|x| *x), Some("task2"));
+        assert_eq!(task3.peek().map(|x| *x), Some("task3"));
+
+        let _ = task1.try_join();
+
+        assert_eq!(task1.peek().map(|x| *x), None);
+        assert_eq!(task2.peek().map(|x| *x), Some("task2"));
+        assert_eq!(task3.peek().map(|x| *x), Some("task3"));
+        assert_eq!(task4.peek().map(|x| *x), None);
+
+        task1.then({
+            let handle = task4.handle();
+            move |&val1| {
+                assert_eq!(val1, "task1");
+                handle.finish("task4");
+            }
+        });
+
+        assert_eq!(task1.peek().map(|x| *x), None);
+        assert_eq!(task2.peek().map(|x| *x), Some("task2"));
+        assert_eq!(task3.peek().map(|x| *x), Some("task3"));
+        assert_eq!(task4.peek().map(|x| *x), None);
     }
 }
