@@ -1,9 +1,13 @@
-use std::{ops::Deref, sync::{atomic::{self, AtomicBool, AtomicU32}, Arc, Mutex, MutexGuard}};
+use std::{any::Any, ops::Deref, sync::{atomic::{self, AtomicBool, AtomicU32}, Arc, Mutex, MutexGuard}};
 use atomic::Ordering::Relaxed;
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug, Default(bound = ""))]
 struct LockedTaskInner<T> {
+    /// used to make a task dependant of another and such keep it alive
+    /// so they are only here for ther destructors to run when the task is cancelled
+    parents: Vec<Box<dyn Any + Send + Sync + 'static>>,
+
     #[derivative(Debug="ignore")]
     thens: Vec<Box<dyn FnOnce(&T) + Send + Sync + 'static>>,
     out: Option<T>,
@@ -22,6 +26,14 @@ impl<T> TaskShared<T> {
         self.done.load(Relaxed)
     }
 
+    pub fn add_parent<O: Send + Sync + 'static>(&self, parent: Task<O>) {
+        let mut lock = self.inner.lock().unwrap();
+        if self.owner_count.load(Relaxed) == 0 {
+            return;
+        }
+        lock.parents.push(Box::new(parent) as _);
+    }
+
     /// The given function is called when the task is finished by the
     /// thread that calls [TaskHandle::finish], or by this thread right now if the task
     /// is already finished and the inner value has not been taken by
@@ -36,21 +48,6 @@ impl<T> TaskShared<T> {
         }
 
         self.inner.lock().unwrap().thens.push(Box::new(then));
-    }
-
-    /// Util function,
-    /// Like [Self::task] but returns a task that finishes with the then
-    /// function's return value.
-    pub fn then_task<Out: Send + Sync + 'static>(
-        &self, then: impl FnOnce(&T) -> Out + Send + Sync + 'static
-    ) -> Task<Out> {
-        let task = Task::new();
-        let handle = task.handle();
-        self.then(move |val| {
-            let res = then(val);
-            handle.finish(res);
-        });
-        task
     }
 
     pub fn peek<'a>(&'a self) -> Option<impl Deref<Target = T> + 'a> {
@@ -130,6 +127,28 @@ impl<T> TaskHandle<T> {
     pub fn finish(&self, val: T) {
         assert!(self.try_finish(val), "task already finished");
     }
+
+    /// Util function,
+    /// Like [Self::task] but returns a task that finishes with the then
+    /// function's return value.
+    ///
+    /// Sets the new task's parent as this one to prevent cancelation of it.
+    pub fn then_task<Out: Send + Sync + 'static>(
+        &self, then: impl FnOnce(&T) -> Out + Send + Sync + 'static
+    ) -> Task<Out>
+        where T: Send + Sync + 'static
+    {
+        let task = Task::new();
+        let handle = task.handle();
+        if let Some(parent) = self.upgrade() {
+            task.add_parent(parent);
+        }
+        self.then(move |val| {
+            let res = then(val);
+            handle.finish(res);
+        });
+        task
+    }
 }
 
 impl<T> Deref for TaskHandle<T> {
@@ -174,11 +193,36 @@ impl<T> Task<T> {
 
         self.shared.inner.lock().unwrap().out.take()
     }
+
+    /// Util function,
+    /// Like [Self::task] but returns a task that finishes with the then
+    /// function's return value.
+    ///
+    /// Sets the new task's parent as this one to prevent cancelation of it.
+    pub fn then_task<Out: Send + Sync + 'static>(
+        &self, then: impl FnOnce(&T) -> Out + Send + Sync + 'static
+    ) -> Task<Out>
+        where T: Send + Sync + 'static
+    {
+        let task = Task::new();
+        let handle = task.handle();
+        task.add_parent(self.clone());
+        self.then(move |val| {
+            let res = then(val);
+            handle.finish(res);
+        });
+        task
+    }
 }
 
 impl<T> Drop for Task<T> {
     fn drop(&mut self) {
-        self.shared.owner_count.fetch_sub(1, Relaxed);
+        let mut lock = self.inner.lock().unwrap();
+        let owners = self.shared.owner_count.fetch_sub(1, Relaxed) - 1;
+        if owners == 0 {
+            // drop all parents
+            lock.parents = vec![];
+        }
     }
 }
 
@@ -285,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn test_thens_simple() {
+    fn test_then_simple() {
         let task1 = Task::<&'static str>::new();
         let task2 = Task::<&'static str>::new();
         let task3 = Task::<&'static str>::new();
@@ -340,5 +384,50 @@ mod tests {
         assert_eq!(task2.peek().map(|x| *x), Some("task2"));
         assert_eq!(task3.peek().map(|x| *x), Some("task3"));
         assert_eq!(task4.peek().map(|x| *x), None);
+    }
+
+    #[test]
+    fn test_then_task() {
+        let task1 = Task::<u32>::new();
+        let handle1 = task1.handle();
+        let task2 = task1.then_task(|s| format!("{s} v2"));
+
+        handle1.finish(5);
+
+        assert_eq!(task1.peek().map(|x| *x), Some(5));
+        assert_eq!(task2.peek().map(|x| x.clone()), Some("5 v2".to_string()));
+
+        let task3 = task1.then_task(|s| format!("{s} v3"));
+
+        assert_eq!(task3.peek().map(|x| x.clone()), Some("5 v3".to_string()));
+    }
+
+    #[test]
+    fn test_then_task_handle() {
+        let task1 = Task::<u32>::new();
+        let handle1 = task1.handle();
+        let task2 = task1.handle().then_task(|s| format!("{s} v2"));
+
+        handle1.finish(5);
+
+        assert_eq!(task1.peek().map(|x| *x), Some(5));
+        assert_eq!(task2.peek().map(|x| x.clone()), Some("5 v2".to_string()));
+
+        let task3 = task1.handle().then_task(|s| format!("{s} v3"));
+
+        assert_eq!(task3.peek().map(|x| x.clone()), Some("5 v3".to_string()));
+    }
+
+    #[test]
+    fn test_then_task_cancel() {
+        let task1 = Task::<u32>::new();
+        let handle1 = task1.handle();
+        let task2 = task1.then_task(|s| format!("{s} v2"));
+
+        assert!(!handle1.canceled());
+        drop(task1);
+        assert!(!handle1.canceled());
+        drop(task2);
+        assert!(handle1.canceled());
     }
 }
