@@ -8,7 +8,7 @@ use bevy_rapier3d::prelude::*;
 use svo::{mesh_generation::marching_cubes, CellPath};
 use utils::{AabbExt, DAabb};
 
-use crate::task_runner::{self, Task};
+use crate::task_runner::{self, OptionTaskExt, Task};
 use crate::svo_provider::SvoProviderComponent;
 
 pub struct SvoRendererPlugin {
@@ -413,10 +413,8 @@ fn chunk_system(
             chunk.data_subdivs = actual_subdivs;
         }
 
-        if let Some(task) = chunk.data_task
-            .take_if(|task| task.finished())
-        {
-            chunk.data = Some(task.join());
+        if let Some(data) = chunk.data_task.take_if_finished() {
+            chunk.data = Some(data);
             chunk.should_update_mesh = true;
         }
 
@@ -445,10 +443,8 @@ fn chunk_system(
             }));
         }
 
-        if let Some(task) = chunk.mesh_task
-            .take_if(|task| task.finished())
-        {
-            if let Some(new_mesh) = task.join() {
+        if let Some(maybe_new_mesh) = chunk.mesh_task.take_if_finished() {
+            if let Some(new_mesh) = maybe_new_mesh {
                 let new_mesh = meshes.add(new_mesh);
                 commands.entity(chunk_entitiy).insert(new_mesh.clone());
                 current_mesh = Some(new_mesh);
@@ -479,9 +475,8 @@ fn chunk_system(
             }));
         }
 
-        if let Some(collider_task) = chunk.collider_task
-            .take_if(|task| task.finished()) {
-            if let Some(collider) = collider_task.join() {
+        if let Some(maybe_collider) = chunk.collider_task.take_if_finished() {
+            if let Some(collider) = maybe_collider {
                 commands.entity(chunk_entitiy).insert(collider);
             }
             else {
