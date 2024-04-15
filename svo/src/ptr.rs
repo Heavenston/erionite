@@ -1,5 +1,7 @@
 mod arc;
 pub use arc::*;
+mod boxed;
+pub use boxed::*;
 
 use std::ops::Deref;
 
