@@ -22,13 +22,13 @@ impl Generator for PlanetGenerator {
 
         let distance_noise = DistanceNoise::default();
 
-        let heigth_noise = HybridMulti::<Perlin>::new(r.gen())
-            .set_frequency(0.5)
-            .set_octaves(5);
-        let heigth_noise = ScalePoint::new(heigth_noise)
-            .set_scale(1. / 70.);
+        let heigth_noise = Fbm::<Simplex>::new(r.gen())
+            .set_frequency(0.0005)
+            // .set_lacunarity(1.5)
+            .set_persistence(0.6)
+            .set_octaves(7);
         let heigth_noise = ScaleBias::new(heigth_noise)
-            .set_scale(20.);
+            .set_scale(150.);
         let heigth_noise = Add::new(
             Add::new(
                 distance_noise,
@@ -37,9 +37,9 @@ impl Generator for PlanetGenerator {
             heigth_noise,
         );
 
-        let disp_noise = HybridMulti::<Perlin>::new(r.gen())
+        let disp_noise = Fbm::<Simplex>::new(r.gen())
             .set_frequency(1.)
-            .set_octaves(5);
+            .set_octaves(2);
         let disp_noise = ScalePoint::new(disp_noise)
             .set_scale(1. / 50.);
 
@@ -61,6 +61,7 @@ impl Generator for PlanetGenerator {
             let spa = [sp.x, sp.y, sp.z].map(|x| x);
 
             let planet_dist = spa.iter().map(|x| x*x).sum::<f64>();
+
             if planet_dist < self.radius.powi(2) * 0.5 {
                 return svo::SdfSample {
                     dist: planet_dist.sqrt() - self.radius,
@@ -74,7 +75,12 @@ impl Generator for PlanetGenerator {
                 };
             }
 
-            let dist = final_noise.get(spa);
+            let dist = if false {
+                planet_dist.sqrt() - self.radius
+            }
+            else {
+                final_noise.get(spa)
+            };
 
             let mut material = svo::TerrainCellKind::Air;
             if dist <= 0. {
