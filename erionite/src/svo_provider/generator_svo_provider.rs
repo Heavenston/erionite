@@ -3,8 +3,9 @@ use std::sync::{Arc, Mutex};
 use bevy::prelude::default;
 use bevy::utils::HashSet;
 use utils::DAabb;
+use itertools::Itertools;
 
-use crate::task_runner::{self, Task};
+use crate::task_runner::{self, Task, TaskHandle};
 use crate::generator::Generator;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +40,87 @@ impl svo::AggregateData for GeneratedDepthData {
     }
 }
 
+impl svo::MergeableData for GeneratedDepthData {
+    fn can_merge(
+        _this: &Self::Internal,
+        children: [&Self; 8]
+    ) -> bool {
+        children.iter().map(|x| x.0).all_equal()
+    }
+
+    fn merge(
+        _this: Self::Internal,
+        children: [Self; 8]
+    ) -> Self {
+        let v = children.iter().map(|x| x.0).min().unwrap_or_default();
+        Self(v + 1)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct GenPromise {
+    started: bool,
+    handle: TaskHandle<Arc<svo::TerrainCell>>,
+    depth: i64,
+}
+
+#[derive(Debug, Default, Clone)]
+struct GenTaskData {
+    promise: Option<GenPromise>,
+}
+
+impl GenTaskData {
+    pub fn clone_lower(&self) -> Self {
+        let Some(task) = self.promise.clone()
+        else {
+            return Self { promise: None };
+        };
+
+        Self {
+            promise: Some(GenPromise {
+                started: false,
+                handle: task.handle,
+                depth: task.depth - 1,
+            })
+        }
+    }
+}
+
+impl svo::Data for GenTaskData {
+    type Internal = Self;
+}
+
+impl svo::InternalData for GenTaskData {
+}
+
+impl svo::SplittableData for GenTaskData {
+    fn split(self) -> (Self::Internal, [Self; 8]) {
+        let lower = self.clone_lower();
+        (self, [
+            lower.clone(), lower.clone(), lower.clone(), lower.clone(),
+            lower.clone(), lower.clone(), lower.clone(), lower,
+        ])
+    }
+}
+
+impl svo::MergeableData for GenTaskData {
+    fn can_merge(
+        _this: &Self::Internal,
+        children: [&Self; 8]
+    ) -> bool {
+        children.iter().map(|x| x.promise.as_ref()).all(|x|
+            x.is_none() || x.is_some_and(|x| x.handle.canceled() || x.handle.finished())
+        )
+    }
+
+    fn merge(
+        this: Self::Internal,
+        _children: [Self; 8]
+    ) -> Self {
+        this
+    }
+}
+
 struct SharedData {
     root_svo: svo::TerrainCell,
     generated: svo::Cell<GeneratedDepthData>,
@@ -51,6 +133,8 @@ pub struct GeneratorSvoProvider<G: Generator> {
 
     svo_data: Arc<Mutex<SharedData>>,
     dirty_chunks: Arc<Mutex<HashSet<svo::CellPath>>>,
+
+    gen_target: svo::BoxCell<GenTaskData>,
 }
 
 impl<G: Generator + 'static> GeneratorSvoProvider<G> {
@@ -72,27 +156,25 @@ impl<G: Generator + 'static> GeneratorSvoProvider<G> {
                 ).into(),
             })),
             dirty_chunks: default(),
+
+            gen_target: default(),
         }
     }
-}
 
-impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
-    fn update(&mut self) {
-        
-    }
-
-    fn request_chunk(
-        &mut self,
+    pub fn start_promise(
+        &self,
         path: svo::CellPath,
         subdivs: u32,
-    ) -> Task<std::sync::Arc<svo::TerrainCell>> {
+        handle: TaskHandle<Arc<svo::TerrainCell>>,
+    ) {
         let generator = Arc::clone(&self.generator);
         let aabb = self.aabb;
 
         let data = self.svo_data.clone();
         let dirties = self.dirty_chunks.clone();
 
-        task_runner::spawn(move || {
+        let handle2 = handle.clone();
+        let task = task_runner::spawn::<(), _>(move || {
             let must_regen = {
                 let lock = data.lock().unwrap();
                 let (found_path, found) = lock.generated.follow_path(path);
@@ -107,6 +189,11 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
                     path,
                     subdivs,
                 );
+
+                if handle.canceled() {
+                    return;
+                }
+                
                 lock = data.lock().unwrap();
                 *lock.root_svo.follow_internal_path(path) = result;
                 lock.root_svo.update_on_path(path);
@@ -127,8 +214,94 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
                 lock = data.lock().unwrap();
             }
 
-            Arc::new(lock.root_svo.clone())
-        })
+            if handle.canceled() {
+                return;
+            }
+            handle.finish(Arc::new(lock.root_svo.clone()));
+        });
+
+        handle2.add_parent(task);
+    }
+}
+
+impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
+    fn update(&mut self) {
+        let mut todo = Vec::new();
+        todo.push(svo::CellPath::new());
+
+        let mut gen_target = std::mem::take(&mut self.gen_target);
+        gen_target.simplify();
+
+        while let Some(path) = todo.pop() {
+            let (found_path, cell) = gen_target.follow_path_mut(path);
+            debug_assert_eq!(found_path, path);
+
+            let is_task_started = 'is_task_started: {
+                let data = cell.data_mut().into_inner();
+
+                let Some(promise) = &mut data.promise
+                else { break 'is_task_started false; };
+
+                if promise.handle.finished() || promise.handle.canceled() {
+                    break 'is_task_started false;
+                }
+
+                if promise.started {
+                    true
+                }
+                else {
+                    promise.started = true;
+
+                    self.start_promise(
+                        path, promise.depth as u32, promise.handle.clone()
+                    );
+
+                    true
+                }
+            };
+
+            // We cannot generate children if the parent has not finished
+            if is_task_started {
+                continue;
+            }
+
+            if cell.has_children() {
+                todo.extend(path.children());
+            }
+        }
+
+        self.gen_target = gen_target;
+    }
+
+    fn request_chunk(
+        &mut self,
+        path: svo::CellPath,
+        subdivs: u32,
+    ) -> Task<Arc<svo::TerrainCell>> {
+        let isubdivs = i64::from(subdivs);
+        let cell = self.gen_target.follow_internal_path(path);
+        
+        if let Some(promise) = &cell.data().into_inner().promise {
+            if promise.depth >= isubdivs {
+                if let Some(task) = promise.handle.upgrade() {
+                    return task;
+                }
+            }
+        }
+
+        let task = Task::new();
+
+        *cell = svo::LeafCell {
+            data: GenTaskData {
+                promise: Some(GenPromise {
+                    handle: task.handle(),
+                    depth: isubdivs,
+                    started: false,
+                }),
+            },
+        }.into();
+
+        task
     }
 
     fn drain_dirty_chunks(&mut self) -> Box<[svo::CellPath]> {
