@@ -141,13 +141,14 @@ fn setup(
         ..default()
     });
 
-    // let cam_pos = DVec3::new(0., radius+20., 0.);
-    let cam_pos = DVec3::new(0., radius * 5., 0.);
+    let cam_pos = DVec3::new(0., 0., radius+20.);
+    // let cam_pos = DVec3::new(0., radius * 5., 0.);
     
     // camera
     camera.entity = Some(commands.spawn(Camera3dBundle {
         transform: Transform::from_translation(cam_pos.as_vec3())
-            .looking_at(Vec3::ZERO, Vec3::Y),
+            .looking_at(Vec3::NEG_X + cam_pos.as_vec3(), cam_pos.normalize().as_vec3()),
+            // .looking_at(Vec3::ZERO, Vec3::Y),
         ..default()
     }).id());
     // // ui camera
