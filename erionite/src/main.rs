@@ -8,7 +8,7 @@ mod svo_provider;
 use svo_provider::generator_svo_provider;
 pub mod task_runner;
 
-use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, prelude::*, window::{CursorGrabMode, PrimaryWindow}};
+use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*, window::{CursorGrabMode, PrimaryWindow}};
 use utils::DAabb;
 use bevy_rapier3d::prelude::*;
 
@@ -65,6 +65,7 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(Update, (camera, update_debug_text))
 
+        .insert_resource(DirectionalLightShadowMap { size: 2048 })
         .init_resource::<Cam>()
         
         .run();
@@ -138,6 +139,14 @@ fn setup(
 
     commands.spawn(DirectionalLightBundle {
         transform: Transform::default(),
+        cascade_shadow_config: CascadeShadowConfigBuilder {
+            maximum_distance: 1_000_000.,
+            ..default()
+        }.build(),
+        directional_light: DirectionalLight {
+            shadows_enabled: true,
+            ..default()
+        },
         ..default()
     });
 
