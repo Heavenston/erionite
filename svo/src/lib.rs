@@ -147,6 +147,14 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
         }
     }
 
+    pub fn has_children(&self) -> bool {
+        match self {
+            Cell::Internal(_) => true,
+            Cell::Leaf(_) => false,
+            Cell::Packed(p) => p.depth() > 0,
+        }
+    }
+
     /// returns false when merging is impossible (always the case for leaf cells and packed cells)
     /// and true when mering was successfull
     pub fn try_merge(&mut self) -> bool

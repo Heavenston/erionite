@@ -92,21 +92,7 @@ impl SplittableData for TerrainCellData {
 
 impl AggregateData for TerrainCellData {
     fn aggregate<'a>(d: [EitherDataRef<Self>; 8]) -> Self {
-        let d = d.map(|x| x.into_inner());
-
-        let mut most = [0u8; 256];
-
-        d.iter().for_each(|k| {
-            most[k.kind as u8 as usize] += 1;
-        });
-
-        let most_res = (most.iter().position_max().unwrap() as u8)
-            .try_into().unwrap();
-
-        Self {
-            kind: most_res,
-            distance: Self::average_distance(d),
-        }
+        *d[0].into_inner()
     }
 }
 
