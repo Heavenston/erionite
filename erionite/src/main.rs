@@ -99,7 +99,7 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut camera: ResMut<Cam>,
 ) {
-    let subdivs = 17u32;
+    let subdivs = 16u32;
     let aabb_size = 2f64.powi((subdivs+2) as i32);
     let radius = aabb_size / 4.;
     let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(aabb_size));
@@ -120,8 +120,8 @@ fn setup(
             min_subdivs: 2,
             chunk_falloff_multiplier: 30.,
             
-            chunk_split_subdivs: 6,
-            chunk_merge_subdivs: 4,
+            chunk_split_subdivs: 5,
+            chunk_merge_subdivs: 5,
 
             root_aabb: aabb,
             on_new_chunk: Some(Box::new(move |mut commands: EntityCommands<'_>| {
