@@ -99,8 +99,8 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut camera: ResMut<Cam>,
 ) {
-    let subdivs = 18u32;
-    let aabb_size = 2f64.powi((subdivs+1) as i32);
+    let subdivs = 17u32;
+    let aabb_size = 2f64.powi((subdivs+2) as i32);
     let radius = aabb_size / 4.;
     let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(aabb_size));
 
@@ -118,7 +118,7 @@ fn setup(
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
             max_subdivs: subdivs,
             min_subdivs: 2,
-            chunk_falloff_multiplier: 20.,
+            chunk_falloff_multiplier: 30.,
             
             chunk_split_subdivs: 6,
             chunk_merge_subdivs: 4,
