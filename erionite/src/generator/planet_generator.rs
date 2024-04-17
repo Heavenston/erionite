@@ -23,12 +23,12 @@ impl Generator for PlanetGenerator {
         let distance_noise = DistanceNoise::default();
 
         let heigth_noise = Fbm::<Simplex>::new(r.gen())
-            .set_frequency(0.0005)
+            .set_frequency(0.00025)
             // .set_lacunarity(1.5)
-            .set_persistence(0.6)
-            .set_octaves(7);
+            .set_persistence(0.5)
+            .set_octaves(8);
         let heigth_noise = ScaleBias::new(heigth_noise)
-            .set_scale(150.);
+            .set_scale(300.);
         let heigth_noise = Add::new(
             Add::new(
                 distance_noise,
