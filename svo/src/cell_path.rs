@@ -237,7 +237,7 @@ impl CellPath {
     }
 
     /// Returns an iterator over all paths possible with the given depth
-    pub fn all_iter(depth: usize) -> impl Iterator<Item = Self> + DoubleEndedIterator {
+    pub fn all_iter(depth: u32) -> impl Iterator<Item = Self> + DoubleEndedIterator {
         let sections = depth * 3;
         (0..(1 << sections)).map(move |i| Self(i | (1 << sections)))
     }
