@@ -23,3 +23,6 @@ members = [
   "erionite",
   "utils",
 ]
+
+[workspace.dependencies]
+bevy = { version = "0.13.1", features = ["dynamic_linking"] }
