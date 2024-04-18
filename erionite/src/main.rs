@@ -117,16 +117,18 @@ fn setup(
         transform: TransformBundle::default(),
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
             max_subdivs: subdivs,
-            min_subdivs: 2,
+            min_subdivs: 5,
             chunk_falloff_multiplier: 30.,
             
             chunk_split_subdivs: 5,
-            chunk_merge_subdivs: 5,
+            chunk_merge_subdivs: 6,
 
             root_aabb: aabb,
             on_new_chunk: Some(Box::new(move |mut commands: EntityCommands<'_>| {
                 commands.insert(mat.clone());
             }) as Box<_>),
+
+            ..default()
         }),
         svo_provider: generator_svo_provider::GeneratorSvoProvider::new(
             generator::PlanetGenerator {
@@ -150,7 +152,7 @@ fn setup(
         ..default()
     });
 
-    let cam_pos = DVec3::new(0., 0., radius+20.);
+    let cam_pos = DVec3::new(0., 0., radius+200.);
     // let cam_pos = DVec3::new(0., radius * 5., 0.);
     
     // camera
@@ -257,6 +259,7 @@ Camera: speed {cam_speed}, position {cam_pos} \n\
 
 fn camera(
     mut transforms: Query<&mut Transform>,
+    mut renderers: Query<&mut SvoRendererComponent>,
 
     mut camera: ResMut<Cam>,
 
@@ -282,6 +285,12 @@ fn camera(
     if mouse_input.just_released(MouseButton::Left) {
         window.cursor.grab_mode = CursorGrabMode::None;
         window.cursor.visible = true;
+    }
+
+    if kb_input.just_pressed(KeyCode::KeyR) {
+        for mut r in &mut renderers {
+            r.options.enable_subdivs_update = !r.options.enable_subdivs_update;
+        }
     }
 
     for mwe in mouse_wheel_events.read() {

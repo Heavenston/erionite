@@ -42,6 +42,8 @@ pub struct SvoRendererBundle {
     pub svo_provider: SvoProviderComponent,
 }
 
+#[derive(derivative::Derivative)]
+#[derivative(Default)]
 pub struct SvoRendererComponentOptions {
     pub max_subdivs: u32,
     pub min_subdivs: u32,
@@ -57,6 +59,9 @@ pub struct SvoRendererComponentOptions {
     pub root_aabb: DAabb,
 
     pub on_new_chunk: Option<Box<dyn FnMut(EntityCommands) -> () + Send + Sync>>,
+
+    #[derivative(Default(value="true"))]
+    pub enable_subdivs_update: bool,
 }
 
 #[derive(Component)]
@@ -237,6 +242,10 @@ fn chunks_subdivs_system(
             log::warn!("Chunk without proper rendrere !?");
             continue;
         };
+
+        if !options.enable_subdivs_update {
+            continue;
+        }
 
         let relative_camera_poses = cameras_poses.iter()
             .map(|&cp| renderer_trans.transform_point(cp))
