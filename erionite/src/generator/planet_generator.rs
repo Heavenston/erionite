@@ -26,7 +26,7 @@ impl Generator for PlanetGenerator {
             .set_frequency(0.00025)
             // .set_lacunarity(1.5)
             .set_persistence(0.5)
-            .set_octaves(8);
+            .set_octaves(10);
         let heigth_noise = ScaleBias::new(heigth_noise)
             .set_scale(300.);
         let heigth_noise = Add::new(

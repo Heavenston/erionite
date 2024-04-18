@@ -7,10 +7,11 @@ use svo_renderer::{ChunkComponent, SvoRendererBundle, SvoRendererComponent, SvoR
 mod svo_provider;
 use svo_provider::generator_svo_provider;
 pub mod task_runner;
+mod gravity;
 
-use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*, window::{CursorGrabMode, PrimaryWindow}};
+use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*, render::mesh::SphereMeshBuilder, window::{CursorGrabMode, PrimaryWindow}};
 use utils::DAabb;
-use bevy_rapier3d::prelude::*;
+use bevy_rapier3d::{prelude::*, rapier::geometry::ColliderBuilder};
 
 fn setup_logger() -> Result<(), Box<dyn std::error::Error>> {
     use fern::colors::{ ColoredLevelConfig, Color };
@@ -56,15 +57,22 @@ fn main() {
         .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
         .add_plugins(bevy::diagnostic::LogDiagnosticsPlugin::default())
 
+        // .add_plugins(RapierDebugRenderPlugin::default())
+
         .add_plugins((
             DefaultPlugins.build().disable::<bevy::log::LogPlugin>(),
             RapierPhysicsPlugin::<NoUserData>::default(),
-            svo_renderer::SvoRendererPlugin::default()
+            svo_renderer::SvoRendererPlugin::default(),
+            gravity::GravityPlugin,
         ))
 
         .add_systems(Startup, setup)
         .add_systems(Update, (camera, update_debug_text))
 
+        .insert_resource(RapierConfiguration {
+            gravity: Vec3::ZERO,
+            ..default()
+        })
         .insert_resource(DirectionalLightShadowMap { size: 2048 })
         .init_resource::<Cam>()
         
@@ -84,7 +92,7 @@ impl FromWorld for Cam {
     fn from_world(_: &mut World) -> Self {
         let this = Self {
             entity: None,
-            speed: 20.,
+            speed: 2.,
         };
         this
     }
@@ -99,8 +107,8 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut camera: ResMut<Cam>,
 ) {
-    let subdivs = 16u32;
-    let aabb_size = 2f64.powi((subdivs+2) as i32);
+    let subdivs = 18u32;
+    let aabb_size = 2f64.powi(subdivs as i32);
     let radius = aabb_size / 4.;
     let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(aabb_size));
 
@@ -137,7 +145,12 @@ fn setup(
             },
             aabb
         ).into(),
-    });
+    }).insert((
+        gravity::Massive {
+            mass: 1_000_000_000.,
+        },
+        gravity::Attractor,
+    ));
 
     commands.spawn(DirectionalLightBundle {
         transform: Transform::default(),
@@ -258,7 +271,9 @@ Camera: speed {cam_speed}, position {cam_pos} \n\
 }
 
 fn camera(
-    mut transforms: Query<&mut Transform>,
+    mut commands: Commands,
+
+    mut camera_query: Query<&mut Transform>,
     mut renderers: Query<&mut SvoRendererComponent>,
 
     mut camera: ResMut<Cam>,
@@ -269,6 +284,10 @@ fn camera(
     kb_input: Res<ButtonInput<KeyCode>>,
     mouse_input: Res<ButtonInput<MouseButton>>,
 
+    time: Res<Time>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+
     mut q_windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     let mut window = q_windows.single_mut();
@@ -276,7 +295,7 @@ fn camera(
     let Some(entity) = camera.entity
     else { return; };
 
-    let mut trans = transforms.get_mut(entity).unwrap();
+    let mut trans = camera_query.get_mut(entity).unwrap();
 
     if mouse_input.just_pressed(MouseButton::Left) {
         window.cursor.grab_mode = CursorGrabMode::Confined;
@@ -293,6 +312,32 @@ fn camera(
         }
     }
 
+    if kb_input.just_pressed(KeyCode::KeyB) {
+        log::info!("Spawning ball !");
+        commands.spawn((
+            TransformBundle {
+                local: Transform::from_translation(trans.translation),
+                ..default()
+            },
+            VisibilityBundle::default(),
+            Collider::ball(1.),
+            meshes.add(SphereMeshBuilder::new(1., bevy::render::mesh::SphereKind::Ico {
+                subdivisions: 5,
+            }).build()),
+            materials.add(StandardMaterial {
+                perceptual_roughness: 0.8,
+                metallic: 0.,
+                base_color: Color::rgb(1., 0.5, 0.),
+                ..default()
+            }),
+            ColliderMassProperties::Mass(10.),
+            ExternalForce::default(),
+            RigidBody::Dynamic,
+            gravity::Massive { mass: 50. },
+            gravity::Attracted,
+        ));
+    }
+
     for mwe in mouse_wheel_events.read() {
         if mwe.y < 0. {
             camera.speed *= 0.9;
@@ -301,6 +346,7 @@ fn camera(
             camera.speed *= 1.1;
         }
     }
+
     if mouse_input.pressed(MouseButton::Left) {
         for me in mouse_move_events.read() {
             let mov = me.delta / -300.;
@@ -308,20 +354,22 @@ fn camera(
             trans.rotate_local_y(mov.x);
             trans.rotate_local_x(mov.y);
         }
-
-        let f = trans.forward();
-        let l = trans.left();
-        if kb_input.pressed(KeyCode::KeyW) {
-            trans.translation += f * camera.speed;
-        }
-        if kb_input.pressed(KeyCode::KeyS) {
-            trans.translation -= f * camera.speed;
-        }
-        if kb_input.pressed(KeyCode::KeyA) {
-            trans.translation += l * camera.speed;
-        }
-        if kb_input.pressed(KeyCode::KeyD) {
-            trans.translation -= l * camera.speed;
-        }
     }
+
+    let f = *trans.forward();
+    let l = *trans.left();
+    let mut movement = Vec3::ZERO;
+    if kb_input.pressed(KeyCode::KeyW) {
+        movement += f;
+    }
+    if kb_input.pressed(KeyCode::KeyS) {
+        movement -= f;
+    }
+    if kb_input.pressed(KeyCode::KeyA) {
+        movement += l;
+    }
+    if kb_input.pressed(KeyCode::KeyD) {
+        movement -= l;
+    }
+    trans.translation += movement.normalize_or_zero() * camera.speed * time.delta_seconds();
 }
