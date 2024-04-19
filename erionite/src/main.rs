@@ -356,20 +356,36 @@ fn camera(
         }
     }
 
-    let f = *trans.forward();
-    let l = *trans.left();
+    let forward = *trans.forward();
+    let left = *trans.left();
+
+    let target_down = (-trans.translation).normalize();
+    let target_down_local = trans.rotation.inverse() * target_down;
+    let angle = Vec3::new(
+        target_down_local.x,
+        target_down_local.y,
+        0.,
+    ).angle_between(Vec3::new(0., -1., 0.));
+    let dir = target_down_local.x.signum();
+    let prop = angle / std::f32::consts::PI;
+    {
+        let speed = prop.sqrt() * 5.;
+        let speed = if prop < 0.001 { angle } else { speed * time.delta_seconds() };
+        trans.rotate_local_z(speed * dir);
+    }
+
     let mut movement = Vec3::ZERO;
     if kb_input.pressed(KeyCode::KeyW) {
-        movement += f;
+        movement += forward;
     }
     if kb_input.pressed(KeyCode::KeyS) {
-        movement -= f;
+        movement -= forward;
     }
     if kb_input.pressed(KeyCode::KeyA) {
-        movement += l;
+        movement += left;
     }
     if kb_input.pressed(KeyCode::KeyD) {
-        movement -= l;
+        movement -= left;
     }
     trans.translation += movement.normalize_or_zero() * camera.speed * time.delta_seconds();
 }
