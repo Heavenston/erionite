@@ -22,7 +22,6 @@ members = [
   "svo",
   "erionite",
   "utils",
+  "rapier_overlay",
+  "doprec",
 ]
-
-[workspace.dependencies]
-bevy = { version = "0.13.1", features = ["dynamic_linking"] }

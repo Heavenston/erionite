@@ -1,0 +1,7 @@
+[package]
+name = "rapier_overlay"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.13.1", default-features = false }
+rapier3d-f64 = { version = "0.18.0", features = ["serde", "simd-stable"] }
