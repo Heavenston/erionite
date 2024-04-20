@@ -1,12 +1,54 @@
 use bevy::{math::DVec3, prelude::*, utils::HashSet};
 use crate::components::{ GlobalTransform64, Transform64, FloatingOrigin };
 
+/// Propagate normal transforms for entities without any transform64
+/// This is to make ui nodes still work
 pub fn propagate_transforms_system(
+    mut root_query: Query<(
+        Option<&Children>, &Transform, &mut GlobalTransform
+    ), (Without<Transform64>, Without<GlobalTransform64>, Without<Parent>)>,
+    mut transform_query: Query<(
+        Option<&Children>, &Transform, &mut GlobalTransform
+    ), (Without<Transform64>, Without<GlobalTransform64>, With<Parent>)>,
+) {
+    let mut done = HashSet::<Entity>::new();
+    let mut to_do = Vec::<(GlobalTransform, Entity)>::new();
+    for (root_children, &root_trans, mut root_global_trans) in &mut root_query {
+        let new_global = GlobalTransform::from(root_trans);
+        if new_global != *root_global_trans {
+            *root_global_trans = new_global;
+        }
+
+        if let Some(root_children) = root_children {
+            to_do.extend(root_children.iter().map(|x| (new_global, *x)));
+            done.extend(root_children.iter());
+        }
+    }
+
+    while let Some((parent_transform, entity)) = to_do.pop() {
+        let Ok((children, &transform, mut global_trans)) = transform_query.get_mut(entity)
+        else { continue; };
+
+        let new_global = parent_transform * transform;
+        if new_global != *global_trans {
+            *global_trans = new_global;
+        }
+
+        if let Some(children) = children {
+            to_do.extend(children.iter().copied()
+                .filter(|x| !done.contains(x))
+                .map(|x| (new_global, x)));
+            done.extend(children.iter());
+        }
+    }
+}
+
+pub fn propagate_transforms64_system(
     mut root_query: Query<(
         Option<&Children>, &Transform64, &mut GlobalTransform64
     ), Without<Parent>>,
     mut transform_query: Query<(
-        &Transform64, &mut GlobalTransform64, Option<&Children>
+        Option<&Children>, &Transform64, &mut GlobalTransform64
     ), With<Parent>>,
 ) {
     let mut done = HashSet::<Entity>::new();
@@ -24,7 +66,7 @@ pub fn propagate_transforms_system(
     }
 
     while let Some((parent_transform, entity)) = to_do.pop() {
-        let Ok((&transform, mut global_trans, children)) = transform_query.get_mut(entity)
+        let Ok((children, &transform, mut global_trans)) = transform_query.get_mut(entity)
         else { continue; };
 
         let new_global = parent_transform * transform;

@@ -10,9 +10,22 @@ pub struct DoprecPlugin {
 
 impl Plugin for DoprecPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostUpdate, (
-            systems::propagate_transforms_system,
-            systems::update_on_floating_origin_system,
-        ).chain());
+        app
+            .add_systems(PostStartup, (
+                systems::propagate_transforms_system,
+
+                (
+                    systems::propagate_transforms64_system,
+                    systems::update_on_floating_origin_system,
+                ).chain(),
+            ))
+            .add_systems(PostUpdate, (
+                systems::propagate_transforms_system,
+
+                (
+                    systems::propagate_transforms64_system,
+                    systems::update_on_floating_origin_system,
+                ).chain(),
+            ));
     }
 }
