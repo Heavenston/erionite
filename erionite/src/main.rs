@@ -68,8 +68,8 @@ fn main() {
             DoprecPlugin::default(),
         ))
 
-        .add_systems(Startup, setup)
-        .add_systems(Update, (camera, update_debug_text))
+        .add_systems(Startup, setup_system)
+        .add_systems(Update, (camera_system, update_debug_text_system))
 
         .insert_resource(DirectionalLightShadowMap { size: 2048 })
         .init_resource::<Cam>()
@@ -99,13 +99,12 @@ impl FromWorld for Cam {
 #[derive(Component)]
 struct DebugTextComponent;
 
-/// set up a simple 3D scene
-fn setup(
+fn setup_system(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut camera: ResMut<Cam>,
 ) {
-    let subdivs = 18u32;
+    let subdivs = 12u32;
     let aabb_size = 2f64.powi(subdivs as i32);
     let radius = aabb_size / 4.;
     let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(aabb_size));
@@ -212,7 +211,7 @@ fn setup(
     }).set_parent(root_uinode);
 }
 
-fn update_debug_text(
+fn update_debug_text_system(
     time: Res<Time>,
     diagnostics: Res<DiagnosticsStore>,
 
@@ -270,7 +269,7 @@ Camera: speed {cam_speed:.3}, position {cam_pos:.3?} \n\
     ");
 }
 
-fn camera(
+fn camera_system(
     // mut commands: Commands,
 
     mut camera_query: Query<&mut Transform64>,
