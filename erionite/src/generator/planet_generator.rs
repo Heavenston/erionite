@@ -12,7 +12,7 @@ pub struct PlanetGenerator {
 impl Generator for PlanetGenerator {
     fn generate_chunk(
         &self,
-        root_aabb: DAabb, path: svo::CellPath,
+        root_aabb: DAabb, path: &svo::CellPath,
         subdivs: u32,
     ) -> svo::TerrainCell {
         use noise::*;

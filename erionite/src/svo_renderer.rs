@@ -319,10 +319,10 @@ fn chunk_split_merge_system(
         // must split
         if chunk.chunk_children.is_none() && chunk.target_state.is_split() {
             let n_children = CellPath::components().map(|child| {
-                let child_path = chunk.path.with_push(child);
+                let child_path = chunk.path.clone().with_push(child);
 
                 let child_chunk_entitiy = commands.spawn((
-                    ChunkComponent::new(chunk.renderer, child_path),
+                    ChunkComponent::new(chunk.renderer, child_path.clone()),
                     Transform64Bundle::default(),
                     VisibilityBundle::default(),
                     Into::<Aabb>::into(child_path.get_aabb(options.root_aabb)),
@@ -418,7 +418,7 @@ fn chunk_system(
             chunk.should_update_data = false;
 
             chunk.data_task = Some(provider.request_chunk(
-                chunk.path,
+                &chunk.path,
                 actual_subdivs
             ));
             chunk.data_subdivs = actual_subdivs;
@@ -435,7 +435,7 @@ fn chunk_system(
             chunk.should_update_mesh = false;
             chunk.mesh_subdivs = chunk.data_subdivs;
 
-            let chunkpath = chunk.path;
+            let chunkpath = chunk.path.clone();
             let root_aabb = renderer.options.root_aabb;
             let subdivs = actual_subdivs;
             chunk.mesh_task = Some(task_runner::spawn(move || {

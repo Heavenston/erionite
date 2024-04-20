@@ -8,7 +8,7 @@ type CellPathInner = u64;
 
 /// Represent a path on the stack by packing a u3 array into a number with
 /// a leading 1 bit as terminator
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct CellPath(CellPathInner);
 impl CellPath {
     pub const MAX_CAPACITY: u32 = CellPathInner::BITS.div_floor(3);
@@ -107,7 +107,7 @@ impl CellPath {
         Some(u3::new((self.0 >> ((len-1) * 3) & 0b111) as u8))
     }
     
-    pub fn parent(self) -> Option<Self> {
+    pub fn parent(&self) -> Option<Self> {
         if self.len() == 0
         { return None; }
 
@@ -116,8 +116,9 @@ impl CellPath {
 
     /// Returns an iterator over all parents, from the deepest to the root
     /// excluding self
-    pub fn parents(mut self) -> impl Iterator<Item = Self> {
-        std::iter::from_fn(move || { self = self.parent()?; Some(self) })
+    pub fn parents(&self) -> impl Iterator<Item = Self> {
+        let mut current = self.clone();
+        std::iter::from_fn(move || { current = current.parent()?; Some(current.clone()) })
     }
 
     pub fn get_aabb(&self, mut root: DAabb) -> DAabb {
@@ -170,14 +171,14 @@ impl CellPath {
         result
     }
 
-    pub fn neighbor(self, dx: i8, dy: i8, dz: i8) -> Option<Self> {
+    pub fn neighbor(&self, dx: i8, dy: i8, dz: i8) -> Option<Self> {
         assert!(
             dx >= -1 && dx <= 1 &&
             dy >= -1 && dy <= 1 &&
             dz >= -1 && dz <= 1
         );
 
-        let mut new = self;
+        let mut new = self.clone();
 
         for (d, i) in [(dx, 0), (dy, 1), (dz, 2)].into_iter() {
             if d == 0
@@ -232,8 +233,8 @@ impl CellPath {
         ]
     }
 
-    pub fn children(self) -> [Self; 8] {
-        Self::components().map(|p| self.with_push(p))
+    pub fn children(&self) -> [Self; 8] {
+        Self::components().map(|p| self.clone().with_push(p))
     }
 
     /// Returns an iterator over all paths possible with the given depth
@@ -286,9 +287,14 @@ impl CellPath {
         Self((self.0 & new_mask) | new_end_bit)
     }
 
-    pub fn extended(self, other: Self) -> Self {
+    pub fn extend(&mut self, other: &Self) {
         assert!(Self::MAX_CAPACITY > self.len() + other.len());
-        Self((self.0 << (other.len() * 3)) | other.index())
+        self.0 = (self.0 << (other.len() * 3)) | other.index();
+    }
+
+    pub fn extended(mut self, other: &Self) -> Self {
+        self.extend(other);
+        self
     }
 
     pub fn in_unit_cube<T>(depth: u32, mut coords: T::Vec3) -> Option<Self>
@@ -338,21 +344,12 @@ impl std::fmt::Debug for CellPath {
     }
 }
 
-impl IntoIterator for CellPath {
-    type Item = u3;
-    type IntoIter = CellPathIterator;
-
-    fn into_iter(self) -> Self::IntoIter {
-        CellPathIterator { path: self, }
-    }
-}
-
 impl IntoIterator for &CellPath {
     type Item = u3;
     type IntoIter = CellPathIterator;
 
     fn into_iter(self) -> Self::IntoIter {
-        CellPathIterator { path: *self, }
+        CellPathIterator { path: self.clone() }
     }
 }
 
@@ -400,14 +397,14 @@ mod tests {
     #[test]
     fn test_neighbor() {
         let path = CellPath(0b1_000);
-        assert_eq!(path.neighbor(0, 0, 0), Some(path));
+        assert_eq!(path.neighbor(0, 0, 0).as_ref(), Some(&path));
         assert_eq!(path.neighbor(0, 1, 0), Some(CellPath(0b1_010)));
         assert_eq!(path.neighbor(1, 1, 0), Some(CellPath(0b1_011)));
         assert_eq!(path.neighbor(1, 1, 1), Some(CellPath(0b1_111)));
         assert_eq!(path.neighbor(-1, 1, 1), None);
 
         let path = CellPath(0b1_010);
-        assert_eq!(path.neighbor(0, 0, 0), Some(path));
+        assert_eq!(path.neighbor(0, 0, 0).as_ref(), Some(&path));
         assert_eq!(path.neighbor(0, 1, 0), None);
         assert_eq!(path.neighbor(0, -1, 0), Some(CellPath(0b1_000)));
         assert_eq!(path.neighbor(1, 0, 0), Some(CellPath(0b1_011)));
@@ -443,11 +440,11 @@ mod tests {
     fn test_extended() {
         let path_a = CellPath(0b1_000_000);
         let path_b = CellPath(0b1_000_000);
-        assert_eq!(path_a.extended(path_b), CellPath(0b1_000_000_000_000));
+        assert_eq!(path_a.extended(&path_b), CellPath(0b1_000_000_000_000));
         let path_a = CellPath(0b1_110_011);
         let path_b = CellPath(0b1_100_101);
-        assert_eq!(path_a.extended(path_b), CellPath(0b1_110_011_100_101));
-        assert_eq!(path_b.extended(path_a), CellPath(0b1_100_101_110_011));
+        assert_eq!(path_a.clone().extended(&path_b), CellPath(0b1_110_011_100_101));
+        assert_eq!(path_b.clone().extended(&path_a), CellPath(0b1_100_101_110_011));
     }
 
     #[test]

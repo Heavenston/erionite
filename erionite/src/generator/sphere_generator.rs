@@ -11,7 +11,7 @@ pub struct SphereGenerator {
 impl Generator for SphereGenerator {
     fn generate_chunk(
         &self,
-        root_aabb: DAabb, path: svo::CellPath,
+        root_aabb: DAabb, path: &svo::CellPath,
         subdivs: u32,
     ) -> svo::TerrainCell {
         let aabb = path.get_aabb(root_aabb);

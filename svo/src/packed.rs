@@ -64,7 +64,7 @@ impl<D> PackedCellLevel<D> {
     }
 }
 
-fn path_index(path: CellPath) -> usize {
+fn path_index(path: &CellPath) -> usize {
     return path.index().try_into().unwrap();
 }
 
@@ -73,7 +73,7 @@ fn level_size(depth: u32) -> u32 {
 }
 
 // TODO: Test
-pub fn path_to_depth_and_pos(cell_path: CellPath) -> (u32, UVec3) {
+pub fn path_to_depth_and_pos(cell_path: &CellPath) -> (u32, UVec3) {
     let mut pos = UVec3::splat(0);
     for comp in cell_path {
         pos *= 2;
@@ -126,7 +126,7 @@ impl<'a, D> PackedCellLevelRef<'a, D> {
         self.depth
     }
 
-    pub fn index(&self, path: CellPath) -> usize {
+    pub fn index(&self, path: &CellPath) -> usize {
         assert_eq!(
             path.len(), self.depth,
             "Wrong cellpath ({path:?}) depth for accessing level ({})",
@@ -139,7 +139,7 @@ impl<'a, D> PackedCellLevelRef<'a, D> {
         &self.level.data
     }
 
-    pub fn get(&self, path: CellPath) -> &'a D {
+    pub fn get(&self, path: &CellPath) -> &'a D {
         &self.level.data[self.index(path)]
     }
 }
@@ -168,7 +168,7 @@ impl<'a, D> PackedCellLevelMut<'a, D> {
         self.depth
     }
 
-    pub fn index(&self, path: CellPath) -> usize {
+    pub fn index(&self, path: &CellPath) -> usize {
         assert_eq!(path.len(), self.depth);
         path_index(path)
     }
@@ -181,11 +181,11 @@ impl<'a, D> PackedCellLevelMut<'a, D> {
         &mut self.level.data
     }
 
-    pub fn get(&self, path: CellPath) -> &D {
+    pub fn get(&self, path: &CellPath) -> &D {
         &self.level.data[self.index(path)]
     }
 
-    pub fn get_mut(&mut self, path: CellPath) -> &mut D {
+    pub fn get_mut(&mut self, path: &CellPath) -> &mut D {
         &mut self.level.data[self.index(path)]
     }
 }
@@ -235,12 +235,12 @@ impl<D: Data> PackedCell<D> {
     /// used for update_{all, on_path}
     /// updates a single cell
     // TODO: Maybe optimize to not recompute indices from the path everytime ?
-    fn update_cell(&mut self, path: CellPath)
+    fn update_cell(&mut self, path: &CellPath)
         where D: AggregateData
     {
         assert!(path.len() < self.depth(), "only internal cells can be updated");
         
-        let children = path.children().map(|child| self.get(child));
+        let children = path.children().map(|child| self.get(&child));
         let new_data = D::aggregate(children);
 
         // path's level isn't the leaf one so we must have an internal data
@@ -253,19 +253,19 @@ impl<D: Data> PackedCell<D> {
     {
         for leveli in (0..self.depth()).rev() {
             for (_, path) in PackedIndexIterator::new(leveli) {
-                self.update_cell(path);
+                self.update_cell(&path);
             }
         }
     }
 
     /// Like [update_all] but only for cells on given path
-    pub fn update_on_path(&mut self, path: CellPath)
+    pub fn update_on_path(&mut self, path: &CellPath)
         where D: AggregateData
     {
         if path.len() < self.depth() {
             self.update_cell(path);
         }
-        path.parents().for_each(|parent| self.update_cell(parent));
+        path.parents().for_each(|parent| self.update_cell(&parent));
     }
 
     pub fn internal_level<'a>(&'a self, depth: u32) -> PackedCellLevelRef<'a, D::Internal> {
@@ -332,7 +332,7 @@ impl<D: Data> PackedCell<D> {
 
     /// Like using self.internal_level or self.leaf_level but has different
     /// lifetime requirements.
-    pub fn get(&self, path: CellPath) -> EitherDataRef<'_, D> {
+    pub fn get(&self, path: &CellPath) -> EitherDataRef<'_, D> {
         if path.len() < self.depth() {
             Either::Left(&self.levels[path.len() as usize].data[path_index(path)])
         }
@@ -346,7 +346,7 @@ impl<D: Data> PackedCell<D> {
 
     /// Like using self.internal_level_mut or self.leaf_level_mut but has different
     /// lifetime requirements.
-    pub fn get_mut(&mut self, path: CellPath) -> EitherDataMut<'_, D> {
+    pub fn get_mut(&mut self, path: &CellPath) -> EitherDataMut<'_, D> {
         if path.len() < self.depth() {
             Either::Left(
                 &mut self.levels[path.len() as usize].data[path_index(path)]

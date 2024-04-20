@@ -23,7 +23,7 @@ impl NoiseFn<f64, 3> for DistanceNoise {
 pub trait Generator: Send + Sync {
     fn generate_chunk(
         &self,
-        aabb: DAabb, path: svo::CellPath,
+        aabb: DAabb, path: &svo::CellPath,
         subdivs: u32,
     ) -> svo::TerrainCell;
 }

@@ -134,7 +134,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
             Cell::Internal(i) => Either::Left(&i.data),
             Cell::Leaf(l)     => Either::Right(&l.data),
 
-            Cell::Packed(p)   => p.get(CellPath::new()),
+            Cell::Packed(p)   => p.get(&CellPath::new()),
         }
     }
 
@@ -143,7 +143,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
             Cell::Internal(i) => Either::Left(&mut i.data),
             Cell::Leaf(l)     => Either::Right(&mut l.data),
 
-            Cell::Packed(p)   => p.get_mut(CellPath::new()),
+            Cell::Packed(p)   => p.get_mut(&CellPath::new()),
         }
     }
 
@@ -295,13 +295,14 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     }
 
     /// Follows the given path, until a leaf or packed cell is reached
-    pub fn follow_path(&self, mut path: CellPath) -> (CellPath, &Self) {
+    pub fn follow_path(&self, path: &CellPath) -> (CellPath, &Self) {
+        let mut path = path.clone();
         let Some(x) = path.pop()
             else { return (CellPath::new(), self); };
 
         match self {
             Cell::Internal(i) => {
-                let (p, s) = i.get_child(x).follow_path(path);
+                let (p, s) = i.get_child(x).follow_path(&path);
                 (p.with_push_back(x), s)
             },
             Cell::Leaf(_) | Cell::Packed(_) => (CellPath::new(), self),
@@ -309,13 +310,14 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     }
 
     /// mut version of [follow_path](Self::follow_path)
-    pub fn follow_path_mut(&mut self, mut path: CellPath) -> (CellPath, &mut Self) {
+    pub fn follow_path_mut(&mut self, path: &CellPath) -> (CellPath, &mut Self) {
+        let mut path = path.clone();
         let Some(x) = path.pop()
             else { return (CellPath::new(), self); };
 
         match self {
             Cell::Internal(i) => {
-                let (p, s) = i.get_child_mut(x).follow_path_mut(path);
+                let (p, s) = i.get_child_mut(x).follow_path_mut(&path);
                 (p.with_push_back(x), s)
             },
             Cell::Leaf(_) | Cell::Packed(_) => (CellPath::new(), self),
@@ -323,15 +325,16 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     }
 
     /// Follows the given path, using [to_internal] at each node
-    pub fn follow_internal_path(&mut self, mut path: CellPath) -> &mut Cell<D, Ptr>
+    pub fn follow_internal_path(&mut self, path: &CellPath) -> &mut Cell<D, Ptr>
         where D: SplittableData
     {
+        let mut path = path.clone();
         let Some(child) = path.pop()
             else { return self };
 
         self.to_internal()
             .get_child_mut(child)
-            .follow_internal_path(path)
+            .follow_internal_path(&path)
     }
 
     /// Like [follow_path] but does continue into packed cells
@@ -351,11 +354,12 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
                     return Either::Right(&l.data);
                 },
                 Cell::Packed(p) => {
-                    return p.get(if path.len() > p.depth() {
+                    let clamped_path = if path.len() > p.depth() {
                         path.take(p.depth())
                     } else {
                         path
-                    });
+                    };
+                    return p.get(&clamped_path);
                 },
             }
         }
@@ -376,7 +380,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
                     return Either::Right(&mut l.data);
                 },
                 Cell::Packed(p) => {
-                    return p.get_mut(path);
+                    return p.get_mut(&path);
                 },
             }
         }
@@ -394,7 +398,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
             Cell::Packed(p) => {
                 for leveli in 0..p.depth() {
                     for (_, path) in PackedIndexIterator::new(leveli) {
-                        update(p.get_mut(path));
+                        update(p.get_mut(&path));
                     }
                 }
             },
@@ -420,13 +424,14 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// Like update all but only updates cells that are in the given path
     ///
     /// if path is goes deeper than the cell the rest of the path is ignored
-    pub fn update_on_path(&mut self, mut path: CellPath)
+    pub fn update_on_path(&mut self, path: &CellPath)
         where D: AggregateData
     {
+        let mut path = path.clone();
         match self {
             Cell::Internal(i) => {
                 if let Some(comp) = path.pop() {
-                    i.get_child_mut(comp).update_on_path(path);
+                    i.get_child_mut(comp).update_on_path(&path);
                 }
                 i.shallow_update();
             },
@@ -435,7 +440,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
                 if path.len() > p.depth() {
                     path = path.take(p.depth());
                 }
-                p.update_on_path(path);
+                p.update_on_path(&path);
             },
         }
     }
@@ -573,18 +578,18 @@ impl<'a, D: Data, Ptr: SvoPtr<D>> Iterator for SvoIterator<'a, D, Ptr> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            match self.current_leaf.as_ref() {
-                Some(&(path, Cell::Internal(i))) => {
+            match self.current_leaf.clone() {
+                Some((path, Cell::Internal(i))) => {
                     self.cell.push((path, i, u3::new(0b000)));
                 },
-                Some(&(path, Cell::Leaf(l))) => {
+                Some((path, Cell::Leaf(l))) => {
                     self.current_leaf.take();
                     return Some(SvoIterItem {
                         path,
                         data: &l.data,
                     });
                 },
-                Some(&(path, Cell::Packed(p))) => 'branch: {
+                Some((path, Cell::Packed(p))) => 'branch: {
                     let Some((_, child_path)) = self.packed_iterator
                         .get_or_insert_with(|| PackedIndexIterator::new(p.depth()))
                         .next()
@@ -594,8 +599,8 @@ impl<'a, D: Data, Ptr: SvoPtr<D>> Iterator for SvoIterator<'a, D, Ptr> {
                         break 'branch;
                     };
                     return Some(SvoIterItem {
-                        path: path.extended(child_path),
-                        data: &p.leaf_level().get(child_path),
+                        path: path.extended(&child_path),
+                        data: &p.leaf_level().get(&child_path),
                     });
                 },
                 None => (),
@@ -607,7 +612,7 @@ impl<'a, D: Data, Ptr: SvoPtr<D>> Iterator for SvoIterator<'a, D, Ptr> {
             };
 
             let child = last_cell.get_child(*child_i);
-            let child_path = last_path.with_push(*child_i);
+            let child_path = last_path.clone().with_push(*child_i);
 
             if *child_i == u3::MAX {
                 self.cell.pop();

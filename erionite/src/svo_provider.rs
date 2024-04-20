@@ -12,7 +12,7 @@ pub trait SvoProvider {
 
     fn request_chunk(
         &mut self,
-        path: svo::CellPath,
+        path: &svo::CellPath,
         subdivs: u32,
     ) -> task_runner::Task<Arc<svo::TerrainCell>>;
 

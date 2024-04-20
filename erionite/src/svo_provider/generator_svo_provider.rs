@@ -143,7 +143,7 @@ impl<G: Generator + 'static> GeneratorSvoProvider<G> {
 
         let init_depth = 6;
         let root_svo = generator.generate_chunk(
-            aabb, svo::CellPath::new(), init_depth
+            aabb, &svo::CellPath::new(), init_depth
         );
         Self {
             aabb,
@@ -163,7 +163,7 @@ impl<G: Generator + 'static> GeneratorSvoProvider<G> {
 
     pub fn start_promise(
         &self,
-        path: svo::CellPath,
+        path: &svo::CellPath,
         subdivs: u32,
         handle: TaskHandle<Arc<svo::TerrainCell>>,
     ) {
@@ -174,33 +174,31 @@ impl<G: Generator + 'static> GeneratorSvoProvider<G> {
         let dirties = self.dirty_chunks.clone();
 
         let handle2 = handle.clone();
+        let path = path.clone();
+
         let task = task_runner::spawn::<(), _>(move || {
             let must_regen = {
                 let lock = data.lock().unwrap();
-                let (found_path, found) = lock.generated.follow_path(path);
+                let (found_path, found) = lock.generated.follow_path(&path);
                 (found.data().into_inner().0 + i64::from(found_path.len()))
                     <
                 From::from(subdivs + path.len())
             };
             let mut lock;
             if must_regen {
-                let result = generator.generate_chunk(
-                    aabb,
-                    path,
-                    subdivs,
-                );
+                let result = generator.generate_chunk(aabb, &path, subdivs);
 
                 if handle.canceled() {
                     return;
                 }
                 
                 lock = data.lock().unwrap();
-                *lock.root_svo.follow_internal_path(path) = result;
-                lock.root_svo.update_on_path(path);
+                *lock.root_svo.follow_internal_path(&path) = result;
+                lock.root_svo.update_on_path(&path);
 
-                *lock.generated.follow_internal_path(path) =
+                *lock.generated.follow_internal_path(&path) =
                     svo::LeafCell::new(GeneratedDepthData(subdivs.into())).into();
-                lock.generated.update_on_path(path);
+                lock.generated.update_on_path(&path);
 
                 dirties.lock().unwrap()
                     .extend(
@@ -233,7 +231,7 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
         gen_target.simplify();
 
         while let Some(path) = todo.pop() {
-            let (found_path, cell) = gen_target.follow_path_mut(path);
+            let (found_path, cell) = gen_target.follow_path_mut(&path);
             debug_assert_eq!(found_path, path);
 
             let is_task_started = 'is_task_started: {
@@ -253,7 +251,7 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
                     promise.started = true;
 
                     self.start_promise(
-                        path, promise.depth as u32, promise.handle.clone()
+                        &path, promise.depth as u32, promise.handle.clone()
                     );
 
                     true
@@ -275,11 +273,11 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
 
     fn request_chunk(
         &mut self,
-        path: svo::CellPath,
+        path: &svo::CellPath,
         subdivs: u32,
     ) -> Task<Arc<svo::TerrainCell>> {
         let isubdivs = i64::from(subdivs);
-        let cell = self.gen_target.follow_internal_path(path);
+        let cell = self.gen_target.follow_internal_path(&path);
         
         if let Some(promise) = &cell.data().into_inner().promise {
             if promise.depth >= isubdivs {

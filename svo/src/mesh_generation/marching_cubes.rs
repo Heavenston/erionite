@@ -495,7 +495,7 @@ pub fn run(
     let mut state = State::new(out);
 
     for (_, subpath) in PackedIndexIterator::new(depth) {
-        let path = chunk.extended(subpath);
+        let path = chunk.clone().extended(&subpath);
         let pos = subpath.get_pos();
 
         let samples = VERTICES
