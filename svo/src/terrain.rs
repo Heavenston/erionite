@@ -1,4 +1,5 @@
 use bevy_render::color::Color;
+use half::f16;
 
 use super::*;
 
@@ -42,7 +43,7 @@ impl TerrainCellKind {
 
 impl Into<TerrainLeafCell> for TerrainCellKind {
     fn into(self) -> TerrainLeafCell {
-        LeafCell::new(TerrainCellData { kind: self, distance: 0. })
+        LeafCell::new(TerrainCellData { kind: self, distance: f16::ZERO })
     }
 }
 
@@ -55,20 +56,21 @@ impl Into<TerrainCell> for TerrainCellKind {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 pub struct TerrainCellData {
     pub kind: TerrainCellKind,
-    pub distance: f32,
+    pub distance: f16,
 }
 
 impl TerrainCellData {
     pub fn average_distance(d: [&Self; 8]) -> f32 {
         let (count, sum) = d.iter()
-            .fold((0f32, 0f32), |(count, sum), x| (count + 1., sum + x.distance));
+            .map(|x| x.distance.to_f32())
+            .fold((0f32, 0f32), |(count, sum), distance| (count + 1., sum + distance));
         sum / count
     }
 
     pub fn density_delta(d: [&Self; 8]) -> f32 {
         let average = Self::average_distance(d);
-        let (count, sum) = d.iter()
-            .map(|x| (x.distance - average))
+        let (count, sum) = d.iter().map(|x| x.distance.to_f32())
+            .map(|distance| (distance - average))
             .fold((0f32, 0f32), |(count, sum), x| (
                 count + 1.,
                 sum + (x - average).powi(2)

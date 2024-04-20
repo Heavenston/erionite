@@ -502,7 +502,7 @@ pub fn run(
             .map(|v| {
                 path.neighbor(v.x as _, v.y as _, v.z as _)
                     .map(|n| root_cell.get_path(n).into_inner())
-                    .map(|cell| (cell.distance, cell.kind))
+                    .map(|cell| (cell.distance.to_f32(), cell.kind))
                     .unwrap_or_default()
             });
 

@@ -141,7 +141,7 @@ impl<G: Generator + 'static> GeneratorSvoProvider<G> {
     pub fn new(generator: impl Into<Arc<G>>, aabb: DAabb) -> Self{
         let generator = generator.into();
 
-        let init_depth = 3;
+        let init_depth = 6;
         let root_svo = generator.generate_chunk(
             aabb, svo::CellPath::new(), init_depth
         );

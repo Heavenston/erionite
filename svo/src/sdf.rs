@@ -1,4 +1,5 @@
 use bevy_math::DVec3;
+use half::f16;
 use utils::DAabb;
 
 use crate::{self as svo};
@@ -24,7 +25,7 @@ pub fn svo_from_sdf<F>(
         let s = sample(&npos);
         packed_data.leaf_level_mut().raw_array_mut()[index] =  svo::TerrainCellData {
             kind: s.material,
-            distance: s.dist as f32,
+            distance: f16::from_f64(s.dist),
         };
     }
 
