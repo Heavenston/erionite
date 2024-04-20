@@ -4,7 +4,7 @@ version = "0.1.1"
 edition = "2021"
 
 [dependencies]
-bevy = "0.13.1"
+bevy = "0.13.2"
 derivative = "2.2.0"
 doprec = { version = "0.0.0", path = "../doprec" }
 either = "1.10.0"
