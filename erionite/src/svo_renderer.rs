@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bevy::time::common_conditions::on_timer;
+use doprec::{GlobalTransform64, Transform64Bundle};
 use ordered_float::OrderedFloat;
 use bevy::{ecs::system::EntityCommands, prelude::*, render::primitives::Aabb};
 use bevy_rapier3d::prelude::*;
@@ -37,7 +38,7 @@ impl Plugin for SvoRendererPlugin {
 
 #[derive(Bundle)]
 pub struct SvoRendererBundle {
-    pub transform: TransformBundle,
+    pub transform: Transform64Bundle,
     pub svo_render: SvoRendererComponent,
     pub svo_provider: SvoProviderComponent,
 }
@@ -186,7 +187,7 @@ fn new_renderer_system(
         commands.entity(renderer_entity).insert(VisibilityBundle::default());
         let root_chunk_entitiy = commands.spawn((
             ChunkComponent::new(renderer_entity, CellPath::new()),
-            TransformBundle::default(),
+            Transform64Bundle::default(),
             VisibilityBundle::default(),
         )).set_parent(renderer_entity).id();
         renderer.root_chunk = root_chunk_entitiy;
@@ -226,9 +227,9 @@ fn provider_updates_system(
 
 /// Updates chunks target_subdivs
 fn chunks_subdivs_system(
-    cameras: Query<(&Camera, &GlobalTransform)>,
+    cameras: Query<(&Camera, &GlobalTransform64)>,
     mut chunks: Query<&mut ChunkComponent>,
-    svo_renders: Query<(&SvoRendererComponent, &GlobalTransform)>,
+    svo_renders: Query<(&SvoRendererComponent, &GlobalTransform64)>,
 ) {
     let cameras_poses = cameras.iter()
         .filter(|(c, _)| c.is_active)
@@ -236,7 +237,7 @@ fn chunks_subdivs_system(
         .collect::<Vec<_>>();
 
     for mut chunk in &mut chunks {
-        let Ok((SvoRendererComponent { options, .. }, renderer_trans)) =
+        let Ok((SvoRendererComponent { options, .. }, &renderer_trans)) =
             svo_renders.get(chunk.renderer)
         else {
             log::warn!("Chunk without proper rendrere !?");
@@ -248,13 +249,12 @@ fn chunks_subdivs_system(
         }
 
         let relative_camera_poses = cameras_poses.iter()
-            .map(|&cp| renderer_trans.transform_point(cp))
+            .map(|&cp| renderer_trans * cp)
             .collect::<Vec<_>>();
         let aabb = chunk.path.get_aabb(options.root_aabb);
 
         let Some(closest_camera_dist_2) = relative_camera_poses.iter()
-            .map(Vec3::as_dvec3)
-            .map(|campos| aabb.closest_point(campos).distance_squared(campos))
+            .map(|&campos| aabb.closest_point(campos).distance_squared(campos))
             .min_by_key(|&d| OrderedFloat(d))
         else { continue };
         let closest_camera_dist = closest_camera_dist_2.sqrt();
@@ -321,7 +321,7 @@ fn chunk_split_merge_system(
 
                 let child_chunk_entitiy = commands.spawn((
                     ChunkComponent::new(chunk.renderer, child_path),
-                    TransformBundle::default(),
+                    Transform64Bundle::default(),
                     VisibilityBundle::default(),
                     Into::<Aabb>::into(child_path.get_aabb(options.root_aabb)),
                 )).set_parent(chunk_entity).id();

@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 bevy = "0.13.1"
-bevy_rapier3d = "0.25.0"
 derivative = "2.2.0"
+doprec = { version = "0.0.0", path = "../doprec" }
 either = "1.10.0"
 fern = { version = "0.6.2", features = ["colored"] }
 itertools = "0.12.1"

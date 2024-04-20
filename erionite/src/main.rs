@@ -9,9 +9,9 @@ use svo_provider::generator_svo_provider;
 pub mod task_runner;
 mod gravity;
 
-use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*, render::mesh::SphereMeshBuilder, window::{CursorGrabMode, PrimaryWindow}};
+use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*, window::{CursorGrabMode, PrimaryWindow}};
 use utils::DAabb;
-use bevy_rapier3d::{prelude::*, rapier::geometry::ColliderBuilder};
+use doprec::{ DoprecPlugin, FloatingOrigin, Transform64, Transform64Bundle };
 
 fn setup_logger() -> Result<(), Box<dyn std::error::Error>> {
     use fern::colors::{ ColoredLevelConfig, Color };
@@ -60,19 +60,17 @@ fn main() {
         // .add_plugins(RapierDebugRenderPlugin::default())
 
         .add_plugins((
-            DefaultPlugins.build().disable::<bevy::log::LogPlugin>(),
-            RapierPhysicsPlugin::<NoUserData>::default(),
+            DefaultPlugins.build()
+                .disable::<bevy::transform::TransformPlugin>()
+                .disable::<bevy::log::LogPlugin>(),
             svo_renderer::SvoRendererPlugin::default(),
             gravity::GravityPlugin,
+            DoprecPlugin::default(),
         ))
 
         .add_systems(Startup, setup)
         .add_systems(Update, (camera, update_debug_text))
 
-        .insert_resource(RapierConfiguration {
-            gravity: Vec3::ZERO,
-            ..default()
-        })
         .insert_resource(DirectionalLightShadowMap { size: 2048 })
         .init_resource::<Cam>()
         
@@ -82,7 +80,7 @@ fn main() {
 #[derive(Resource)]
 pub struct Cam {
     pub entity: Option<Entity>,
-    pub speed: f32,
+    pub speed: f64,
 }
 
 impl Cam {
@@ -118,11 +116,12 @@ fn setup(
     let mat = materials.add(StandardMaterial {
         perceptual_roughness: 0.8,
         metallic: 0.,
+        cull_mode: None,
         ..default()
     });
 
     commands.spawn(SvoRendererBundle {
-        transform: TransformBundle::default(),
+        transform: Transform64Bundle::default(),
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
             max_subdivs: subdivs,
             min_subdivs: 5,
@@ -163,20 +162,22 @@ fn setup(
             ..default()
         },
         ..default()
-    });
+    }).insert(Transform64Bundle::default());
 
     let cam_pos = DVec3::new(0., 0., radius+200.);
     // let cam_pos = DVec3::new(0., radius * 5., 0.);
     
     // camera
-    camera.entity = Some(commands.spawn(Camera3dBundle {
-        transform: Transform::from_translation(cam_pos.as_vec3())
-            .looking_at(Vec3::NEG_X + cam_pos.as_vec3(), cam_pos.normalize().as_vec3()),
-            // .looking_at(Vec3::ZERO, Vec3::Y),
-        ..default()
-    }).id());
-    // // ui camera
-    // commands.spawn(Camera2dBundle::default());
+    camera.entity = Some(commands
+        .spawn(Camera3dBundle::default())
+        .insert(Transform64Bundle {
+            local: Transform64::from_translation(cam_pos)
+                .looking_at(DVec3::NEG_X + cam_pos, cam_pos.normalize()),
+            ..default()
+        })
+        .insert(FloatingOrigin)
+        .id()
+    );
 
     let root_uinode = commands
         .spawn(NodeBundle {
@@ -216,7 +217,7 @@ fn update_debug_text(
     time: Res<Time>,
     diagnostics: Res<DiagnosticsStore>,
 
-    transforms: Query<&Transform>,
+    transforms: Query<&Transform64>,
     camera: Res<Cam>,
 
     mut debug_text: Query<&mut Text, With<DebugTextComponent>>,
@@ -266,14 +267,14 @@ fn update_debug_text(
     debug_text.sections[0].value = format!("\
 {fps:.1} fps - {frame_time:.3} ms/frame \n\
 Chunks: {chunk_count}, gen {chunk_gen_count}, mesh {chunk_mesh_gen_count}, col {chunk_col_gen_count} \n\
-Camera: speed {cam_speed}, position {cam_pos} \n\
+Camera: speed {cam_speed:.3}, position {cam_pos:.3?} \n\
     ");
 }
 
 fn camera(
-    mut commands: Commands,
+    // mut commands: Commands,
 
-    mut camera_query: Query<&mut Transform>,
+    mut camera_query: Query<&mut Transform64>,
     mut renderers: Query<&mut SvoRendererComponent>,
 
     mut camera: ResMut<Cam>,
@@ -285,8 +286,8 @@ fn camera(
     mouse_input: Res<ButtonInput<MouseButton>>,
 
     time: Res<Time>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    // mut meshes: ResMut<Assets<Mesh>>,
+    // mut materials: ResMut<Assets<StandardMaterial>>,
 
     mut q_windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
@@ -295,7 +296,7 @@ fn camera(
     let Some(entity) = camera.entity
     else { return; };
 
-    let mut trans = camera_query.get_mut(entity).unwrap();
+    let mut camera_trans = camera_query.get_mut(entity).unwrap();
 
     if mouse_input.just_pressed(MouseButton::Left) {
         window.cursor.grab_mode = CursorGrabMode::Confined;
@@ -312,31 +313,31 @@ fn camera(
         }
     }
 
-    if kb_input.just_pressed(KeyCode::KeyB) {
-        log::info!("Spawning ball !");
-        commands.spawn((
-            TransformBundle {
-                local: Transform::from_translation(trans.translation),
-                ..default()
-            },
-            VisibilityBundle::default(),
-            Collider::ball(1.),
-            meshes.add(SphereMeshBuilder::new(1., bevy::render::mesh::SphereKind::Ico {
-                subdivisions: 5,
-            }).build()),
-            materials.add(StandardMaterial {
-                perceptual_roughness: 0.8,
-                metallic: 0.,
-                base_color: Color::rgb(1., 0.5, 0.),
-                ..default()
-            }),
-            ColliderMassProperties::Mass(10.),
-            ExternalForce::default(),
-            RigidBody::Dynamic,
-            gravity::Massive { mass: 50. },
-            gravity::Attracted,
-        ));
-    }
+    // if kb_input.just_pressed(KeyCode::KeyB) {
+    //     log::info!("Spawning ball !");
+    //     commands.spawn((
+    //         Transform64Bundle {
+    //             local: Transform64::from_translation(camera_trans.translation),
+    //             ..default()
+    //         },
+    //         VisibilityBundle::default(),
+    //         Collider::ball(1.),
+    //         meshes.add(SphereMeshBuilder::new(1., bevy::render::mesh::SphereKind::Ico {
+    //             subdivisions: 5,
+    //         }).build()),
+    //         materials.add(StandardMaterial {
+    //             perceptual_roughness: 0.8,
+    //             metallic: 0.,
+    //             base_color: Color::rgb(1., 0.5, 0.),
+    //             ..default()
+    //         }),
+    //         ColliderMassProperties::Mass(10.),
+    //         ExternalForce::default(),
+    //         RigidBody::Dynamic,
+    //         gravity::Massive { mass: 50. },
+    //         gravity::Attracted,
+    //     ));
+    // }
 
     for mwe in mouse_wheel_events.read() {
         if mwe.y < 0. {
@@ -349,32 +350,32 @@ fn camera(
 
     if mouse_input.pressed(MouseButton::Left) {
         for me in mouse_move_events.read() {
-            let mov = me.delta / -300.;
+            let mov = me.delta.as_dvec2() / -300.;
 
-            trans.rotate_local_y(mov.x);
-            trans.rotate_local_x(mov.y);
+            camera_trans.rotate_local_y(mov.x);
+            camera_trans.rotate_local_x(mov.y);
         }
     }
 
-    let forward = *trans.forward();
-    let left = *trans.left();
+    let forward = camera_trans.forward();
+    let left = camera_trans.left();
 
-    let target_down = (-trans.translation).normalize();
-    let target_down_local = trans.rotation.inverse() * target_down;
-    let angle = Vec3::new(
+    let target_down = (-camera_trans.translation).normalize();
+    let target_down_local = camera_trans.rotation.inverse() * target_down;
+    let angle = DVec3::new(
         target_down_local.x,
         target_down_local.y,
         0.,
-    ).angle_between(Vec3::new(0., -1., 0.));
+    ).angle_between(DVec3::new(0., -1., 0.));
     let dir = target_down_local.x.signum();
-    let prop = angle / std::f32::consts::PI;
+    let prop = angle / std::f64::consts::PI;
     {
         let speed = prop.sqrt() * 5.;
-        let speed = if prop < 0.001 { angle } else { speed * time.delta_seconds() };
-        trans.rotate_local_z(speed * dir);
+        let speed = if prop < 0.001 { angle } else { speed * (time.delta_seconds() as f64) };
+        camera_trans.rotate_local_z(speed * dir);
     }
 
-    let mut movement = Vec3::ZERO;
+    let mut movement = DVec3::ZERO;
     if kb_input.pressed(KeyCode::KeyW) {
         movement += forward;
     }
@@ -387,5 +388,5 @@ fn camera(
     if kb_input.pressed(KeyCode::KeyD) {
         movement -= left;
     }
-    trans.translation += movement.normalize_or_zero() * camera.speed * time.delta_seconds();
+    camera_trans.translation += movement.normalize_or_zero() * camera.speed * (time.delta_seconds() as f64);
 }

@@ -1,18 +1,32 @@
-use std::ops::{Deref, DerefMut, Mul};
+use std::ops::Mul;
 
 use bevy::prelude::*;
-use bevy::math::{Affine3, Affine3A, DAffine3, DQuat, DVec3};
+use bevy::math::{Affine3A, DAffine3, DMat3, DQuat, DVec3};
+
+#[derive(Bundle, Default)]
+pub struct Transform64Bundle {
+    pub local: Transform64,
+    pub global: GlobalTransform64,
+    pub bevy_local: Transform,
+    pub bevy_global: GlobalTransform,
+}
 
 #[derive(Component)]
 pub struct FloatingOrigin;
 
 // Uses translation, rotation, scale instead of DAffine3 like bevy does 
 // gives easy and intuitive access to the three properties
-#[derive(Component, PartialEq, Clone, Copy)]
+#[derive(Component, Debug, PartialEq, Clone, Copy)]
 pub struct Transform64 {
     pub translation: DVec3,
     pub rotation: DQuat,
     pub scale: DVec3,
+}
+
+impl Default for Transform64 {
+    fn default() -> Self {
+        Self::IDENTITY
+    }
 }
 
 impl Transform64 {
@@ -60,6 +74,84 @@ impl Transform64 {
             scale: self.scale.as_vec3(),
         }
     }
+
+    /// See bevy's Transform::looking_at
+    #[inline]
+    #[must_use]
+    pub fn looking_at(mut self, target: DVec3, up: DVec3) -> Self {
+        self.look_at(target, up);
+        self
+    }
+
+    /// See bevy's Transform::look_at
+    pub fn look_at(&mut self, target: DVec3, up: DVec3) {
+        self.look_to(target - self.translation, up);
+    }
+
+    // NOTE: Copy pasted straight from bevy
+    /// See bevy's Transform::look_to
+    pub fn look_to(&mut self, direction: DVec3, up: DVec3) {
+        let back = -direction.try_normalize().unwrap_or(DVec3::NEG_Z);
+        let up = up.try_normalize().unwrap_or(DVec3::Y);
+        let right = up
+            .cross(back)
+            .try_normalize()
+            .unwrap_or_else(|| up.any_orthonormal_vector());
+        let up = back.cross(right);
+        self.rotation = DQuat::from_mat3(&DMat3::from_cols(right, up, back));
+    }
+
+    pub fn rotate_local(&mut self, rotation: DQuat) {
+        self.rotation *= rotation;
+    }
+
+    pub fn rotate_local_y(&mut self, angle: f64) {
+        self.rotate_local(DQuat::from_rotation_y(angle));
+    }
+
+    pub fn rotate_local_x(&mut self, angle: f64) {
+        self.rotate_local(DQuat::from_rotation_x(angle));
+    }
+
+    pub fn rotate_local_z(&mut self, angle: f64) {
+        self.rotate_local(DQuat::from_rotation_z(angle));
+    }
+
+    pub fn local_x(&self) -> DVec3 {
+        self.rotation * DVec3::X
+    }
+
+    pub fn local_y(&self) -> DVec3 {
+        self.rotation * DVec3::Y
+    }
+
+    pub fn local_z(&self) -> DVec3 {
+        self.rotation * DVec3::Z
+    }
+
+    pub fn forward(&self) -> DVec3 {
+        -self.local_z()
+    }
+
+    pub fn back(&self) -> DVec3 {
+        self.local_z()
+    }
+
+    pub fn left(&self) -> DVec3 {
+        -self.local_x()
+    }
+
+    pub fn right(&self) -> DVec3 {
+        self.local_x()
+    }
+
+    pub fn up(&self) -> DVec3 {
+        self.local_y()
+    }
+
+    pub fn down(&self) -> DVec3 {
+        -self.local_y()
+    }
 }
 
 impl Mul<DVec3> for Transform64 {
@@ -85,10 +177,18 @@ impl Mul for Transform64 {
 
 // Uses DAffine3.. because that's why bevy uses, i guess because multiplication is
 // faster ?
-#[derive(Component, PartialEq, Clone, Copy)]
+#[derive(Component, Debug, PartialEq, Clone, Copy)]
 pub struct GlobalTransform64(DAffine3);
 
+impl Default for GlobalTransform64 {
+    fn default() -> Self {
+        Self::IDENTITY
+    }
+}
+
 impl GlobalTransform64 {
+    pub const IDENTITY: Self = Self(DAffine3::IDENTITY);
+
     pub fn as_32(&self) -> GlobalTransform {
         Affine3A {
             matrix3: self.0.matrix3.as_mat3().into(),

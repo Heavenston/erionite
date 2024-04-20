@@ -1,9 +1,9 @@
-use bevy::{log, math::DVec3, prelude::*, utils::HashSet};
+use bevy::{math::DVec3, prelude::*, utils::HashSet};
 use crate::components::{ GlobalTransform64, Transform64, FloatingOrigin };
 
 pub fn propagate_transforms_system(
     mut root_query: Query<(
-        &Children, &Transform64, &mut GlobalTransform64
+        Option<&Children>, &Transform64, &mut GlobalTransform64
     ), Without<Parent>>,
     mut transform_query: Query<(
         &Transform64, &mut GlobalTransform64, Option<&Children>
@@ -17,8 +17,10 @@ pub fn propagate_transforms_system(
             *root_global_trans = new_global;
         }
 
-        to_do.extend(root_children.iter().map(|x| (*root_global_trans, *x)));
-        done.extend(root_children.iter());
+        if let Some(root_children) = root_children {
+            to_do.extend(root_children.iter().map(|x| (new_global, *x)));
+            done.extend(root_children.iter());
+        }
     }
 
     while let Some((parent_transform, entity)) = to_do.pop() {
@@ -40,8 +42,12 @@ pub fn propagate_transforms_system(
 }
 
 pub fn update_on_floating_origin_system(
-    mut floating_origin: Query<(&GlobalTransform64, &mut GlobalTransform), With<FloatingOrigin>>,
-    mut all_transforms: Query<(&GlobalTransform64, &mut GlobalTransform), (Without<FloatingOrigin>, Changed<GlobalTransform64>)>,
+    mut floating_origin: Query<(
+        &GlobalTransform64, &mut GlobalTransform
+    ), With<FloatingOrigin>>,
+    mut all_transforms: Query<(
+        &GlobalTransform64, &mut GlobalTransform
+    ), Without<FloatingOrigin>>,
 ) {
     let Ok((&floating_origin, mut floating_origin_bevy_trans)) = floating_origin.get_single_mut()
     else {
@@ -61,6 +67,6 @@ pub fn update_on_floating_origin_system(
     let floating_trans = GlobalTransform64::from_translation(-floating_origin.translation());
     
     for (&global_trans, mut bevy_global_trans) in &mut all_transforms {
-        *bevy_global_trans = (floating_trans * global_trans).as_32();
+        *bevy_global_trans = (global_trans * floating_trans).as_32();
     }
 }
