@@ -116,7 +116,6 @@ fn setup(
     let mat = materials.add(StandardMaterial {
         perceptual_roughness: 0.8,
         metallic: 0.,
-        cull_mode: None,
         ..default()
     });
 

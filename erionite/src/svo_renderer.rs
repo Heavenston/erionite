@@ -5,12 +5,14 @@ use bevy::time::common_conditions::on_timer;
 use doprec::{GlobalTransform64, Transform64Bundle};
 use ordered_float::OrderedFloat;
 use bevy::{ecs::system::EntityCommands, prelude::*, render::primitives::Aabb};
-use bevy_rapier3d::prelude::*;
 use svo::{mesh_generation::marching_cubes, CellPath};
 use utils::{AabbExt, DAabb};
 
 use crate::task_runner::{self, OptionTaskExt, Task};
 use crate::svo_provider::SvoProviderComponent;
+
+// Shim for physics collider
+type Collider = ();
 
 pub struct SvoRendererPlugin {
     
@@ -465,7 +467,7 @@ fn chunk_system(
             }
         }
 
-        if let Some(mesh_for_collider) = (chunk.target_state.is_merge() && chunk.should_update_collider)
+        if let Some(_mesh_for_collider) = (chunk.target_state.is_merge() && chunk.should_update_collider)
             .then_some(current_mesh).flatten()
             .and_then(|handle| meshes.get(handle)).cloned()
         {
@@ -478,9 +480,10 @@ fn chunk_system(
                 if subdivs != target {
                     return None;
                 }
-                Collider::from_bevy_mesh(
-                    &mesh_for_collider, &ComputedColliderShape::TriMesh
-                )
+                // Collider::from_bevy_mesh(
+                //     &mesh_for_collider, &ComputedColliderShape::TriMesh
+                // )
+                Some(())
             }));
         }
 
