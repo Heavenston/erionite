@@ -3,6 +3,7 @@
 
 mod generator;
 mod svo_renderer;
+use gravity::GravityFieldSample;
 use svo_renderer::{ChunkComponent, SvoRendererBundle, SvoRendererComponent, SvoRendererComponentOptions};
 mod svo_provider;
 use svo_provider::generator_svo_provider;
@@ -81,6 +82,10 @@ fn main() {
 pub struct Cam {
     pub entity: Option<Entity>,
     pub speed: f64,
+    pub forced_gravity_toggle: bool,
+    /// Changed by the cam controller
+    /// Changing it manually have no effect
+    pub gravity_redirect_enabled: bool,
 }
 
 impl Cam {
@@ -88,11 +93,12 @@ impl Cam {
 
 impl FromWorld for Cam {
     fn from_world(_: &mut World) -> Self {
-        let this = Self {
+        Self {
             entity: None,
             speed: 2.,
-        };
-        this
+            forced_gravity_toggle: false,
+            gravity_redirect_enabled: false,
+        }
     }
 }
 
@@ -173,7 +179,10 @@ fn setup_system(
                 .looking_at(DVec3::NEG_X + cam_pos, cam_pos.normalize()),
             ..default()
         })
-        .insert(FloatingOrigin)
+        .insert((
+            FloatingOrigin,
+            GravityFieldSample::default(),
+        ))
         .id()
     );
 
@@ -261,18 +270,25 @@ fn update_debug_text_system(
     let cam_pos = cam_transform.translation;
     let cam_speed = camera.speed;
 
+    let cam_info = if camera.gravity_redirect_enabled {
+        "Gravity Redirect: enabled\n"
+    } else {
+        "Gravity Redirect: disabled\n"
+    };
+
     let mut debug_text = debug_text.single_mut();
     debug_text.sections[0].value = format!("\
 {fps:.1} fps - {frame_time:.3} ms/frame \n\
 Chunks: {chunk_count}, gen {chunk_gen_count}, mesh {chunk_mesh_gen_count}, col {chunk_col_gen_count} \n\
 Camera: speed {cam_speed:.3}, position {cam_pos:.3?} \n\
+{cam_info}
     ");
 }
 
 fn camera_system(
     // mut commands: Commands,
 
-    mut camera_query: Query<&mut Transform64>,
+    mut camera_query: Query<(&mut Transform64, &GravityFieldSample)>,
     mut renderers: Query<&mut SvoRendererComponent>,
 
     mut camera: ResMut<Cam>,
@@ -294,7 +310,10 @@ fn camera_system(
     let Some(entity) = camera.entity
     else { return; };
 
-    let mut camera_trans = camera_query.get_mut(entity).unwrap();
+    let (
+        mut camera_trans,
+        camera_gravity,
+    ) = camera_query.get_mut(entity).unwrap();
 
     if mouse_input.just_pressed(MouseButton::Left) {
         window.cursor.grab_mode = CursorGrabMode::Confined;
@@ -309,6 +328,10 @@ fn camera_system(
         for mut r in &mut renderers {
             r.options.enable_subdivs_update = !r.options.enable_subdivs_update;
         }
+    }
+
+    if kb_input.just_pressed(KeyCode::KeyG) {
+        camera.forced_gravity_toggle = !camera.forced_gravity_toggle;
     }
 
     // if kb_input.just_pressed(KeyCode::KeyB) {
@@ -358,19 +381,23 @@ fn camera_system(
     let forward = camera_trans.forward();
     let left = camera_trans.left();
 
-    let target_down = (-camera_trans.translation).normalize();
-    let target_down_local = camera_trans.rotation.inverse() * target_down;
-    let angle = DVec3::new(
-        target_down_local.x,
-        target_down_local.y,
-        0.,
-    ).angle_between(DVec3::new(0., -1., 0.));
-    let dir = target_down_local.x.signum();
-    let prop = angle / std::f64::consts::PI;
-    {
-        let speed = prop.sqrt() * 5.;
-        let speed = if prop < 0.001 { angle } else { speed * (time.delta_seconds() as f64) };
-        camera_trans.rotate_local_z(speed * dir);
+    camera.gravity_redirect_enabled =
+        !camera.forced_gravity_toggle &&
+        camera_gravity.force.length_squared() > 1.;
+    if camera.gravity_redirect_enabled {
+        let target_down = camera_gravity.force.normalize();
+        let target_down_local = camera_trans.rotation.inverse() * target_down;
+        let angle = DVec3::new(
+            target_down_local.x,
+            target_down_local.y,
+            0.,
+        ).angle_between(DVec3::new(0., -1., 0.));
+        let dir = target_down_local.x.signum();
+        let prop = angle / std::f64::consts::PI;
+
+        let rot_speed = prop.sqrt() * 5.;
+        let rot_speed = if prop < 0.001 { angle } else { rot_speed * (time.delta_seconds() as f64) };
+        camera_trans.rotate_local_z(rot_speed * dir);
     }
 
     let mut movement = DVec3::ZERO;

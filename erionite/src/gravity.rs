@@ -16,21 +16,21 @@ impl Plugin for GravityPlugin {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Default)]
 pub struct Massive {
     pub mass: f64,
 }
 
 /// Spatial entities with this component will have it updated with the
 /// total gravital force of all Attractors on its position.
-#[derive(Component)]
+#[derive(Component, Default)]
 pub struct GravityFieldSample {
     pub force: DVec3,
 }
 
-#[derive(Component)]
+#[derive(Component, Default)]
 pub struct Attractor;
-#[derive(Component)]
+#[derive(Component, Default)]
 pub struct Attracted;
 
 // fn sync_attractor_masses_with_colliders_system(
