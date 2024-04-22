@@ -253,32 +253,25 @@ fn chunks_subdivs_system(
         let relative_camera_poses = cameras_poses.iter()
             .map(|&cp| renderer_trans * cp)
             .collect::<Vec<_>>();
-        let aabb = chunk.path.get_aabb(options.root_aabb);
+        let chunk_aabb = chunk.path.get_aabb(options.root_aabb);
 
         let Some(closest_camera_dist_2) = relative_camera_poses.iter()
-            .map(|&campos| aabb.closest_point(campos).distance_squared(campos))
+            .map(|&campos| chunk_aabb.closest_point(campos).distance_squared(campos))
             .min_by_key(|&d| OrderedFloat(d))
         else { continue };
         let closest_camera_dist = closest_camera_dist_2.sqrt();
 
-        let mut total_subdivs = 0u32;
-        while total_subdivs < options.max_subdivs  {
-            let mut width = options.root_aabb.size / 2f64.powi(total_subdivs as i32);
-            width *= options.chunk_falloff_multiplier;
-            if closest_camera_dist < width.max_element() {
-                total_subdivs += 1;
-            }
-            else {
-                break;
-            }
+        let mut total_subdivs = options.max_subdivs;
+        while total_subdivs > options.min_subdivs &&
+            closest_camera_dist >
+                (chunk_aabb.size /
+                    2f64.powi(total_subdivs.saturating_sub(chunk.path.depth()) as i32)
+                ).length() * options.chunk_falloff_multiplier
+        {
+            total_subdivs -= 1;
         }
 
-        if total_subdivs < options.min_subdivs {
-            total_subdivs = options.min_subdivs;
-        }
-        
-        let subdivs = total_subdivs.saturating_sub(chunk.path.len());
-       
+        let subdivs = total_subdivs.saturating_sub(chunk.path.depth());
         if chunk.waiting_for_subdivs || chunk.target_subdivs != subdivs {
             chunk.waiting_for_subdivs = false;
             chunk.should_update_data = true;
