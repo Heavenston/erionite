@@ -110,7 +110,7 @@ fn setup_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut camera: ResMut<Cam>,
 ) {
-    let subdivs = 18u32;
+    let subdivs = 15u32;
     let aabb_size = 2f64.powi(subdivs as i32);
     let radius = aabb_size / 4.;
     let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(aabb_size));
@@ -135,8 +135,11 @@ fn setup_system(
             chunk_merge_subdivs: 6,
 
             root_aabb: aabb,
-            on_new_chunk: Some(Box::new(move |mut commands: EntityCommands<'_>| {
-                commands.insert(mat.clone());
+            on_new_chunk: Some(Box::new({
+                let mat = mat.clone();
+                move |mut commands: EntityCommands<'_>| {
+                    commands.insert(mat.clone());
+                }
             }) as Box<_>),
 
             ..default()
@@ -150,7 +153,48 @@ fn setup_system(
         ).into(),
     }).insert((
         gravity::Massive {
-            mass: 1_000_000_000.,
+            mass: (4. / 3.) * std::f64::consts::PI * radius.powi(3),
+        },
+        gravity::Attractor,
+    ));
+
+    commands.spawn(SvoRendererBundle {
+        transform: Transform64Bundle {
+            local: Transform64::from_translation(DVec3::new(
+                radius * 4.,
+                0.,
+                0.,
+            )),
+            ..default()
+        },
+        svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
+            max_subdivs: subdivs,
+            min_subdivs: 5,
+            chunk_falloff_multiplier: 30.,
+            
+            chunk_split_subdivs: 5,
+            chunk_merge_subdivs: 6,
+
+            root_aabb: aabb,
+            on_new_chunk: Some(Box::new({
+                let mat = mat.clone();
+                move |mut commands: EntityCommands<'_>| {
+                    commands.insert(mat.clone());
+                }
+            }) as Box<_>),
+
+            ..default()
+        }),
+        svo_provider: generator_svo_provider::GeneratorSvoProvider::new(
+            generator::PlanetGenerator {
+                radius,
+                seed: 2,
+            },
+            aabb,
+        ).into(),
+    }).insert((
+        gravity::Massive {
+            mass: (4. / 3.) * std::f64::consts::PI * radius.powi(3),
         },
         gravity::Attractor,
     ));
@@ -168,7 +212,11 @@ fn setup_system(
         ..default()
     }).insert(Transform64Bundle::default());
 
-    let cam_pos = DVec3::new(0., 0., radius+200.);
+    let cam_pos = DVec3::new(
+        radius*4.,
+        0.,
+        radius+200.
+    );
     // let cam_pos = DVec3::new(0., radius * 5., 0.);
     
     // camera
@@ -224,7 +272,7 @@ fn update_debug_text_system(
     time: Res<Time>,
     diagnostics: Res<DiagnosticsStore>,
 
-    transforms: Query<&Transform64>,
+    cam_query: Query<(&Transform64, &GravityFieldSample)>,
     camera: Res<Cam>,
 
     mut debug_text: Query<&mut Text, With<DebugTextComponent>>,
@@ -232,7 +280,7 @@ fn update_debug_text_system(
 ) {
     let Some(cam_entity) = camera.entity
     else { return; };
-    let cam_transform = transforms.get(cam_entity).unwrap();
+    let (cam_transform, cam_gravity) = cam_query.get(cam_entity).unwrap();
 
     let mut fps = 0.0;
     if let Some(fps_diagnostic) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
@@ -270,18 +318,18 @@ fn update_debug_text_system(
     let cam_pos = cam_transform.translation;
     let cam_speed = camera.speed;
 
-    let cam_info = if camera.gravity_redirect_enabled {
-        "Gravity Redirect: enabled\n"
-    } else {
-        "Gravity Redirect: disabled\n"
-    };
+    let mut grav_info = String::new();
+    grav_info += &format!("G: {:.2}", cam_gravity.force.length());
+    grav_info += ", grav_redirect: ";
+    grav_info += if camera.gravity_redirect_enabled { "enabled" } else { "disabled" };
+    grav_info += "\n";
 
     let mut debug_text = debug_text.single_mut();
     debug_text.sections[0].value = format!("\
 {fps:.1} fps - {frame_time:.3} ms/frame \n\
 Chunks: {chunk_count}, gen {chunk_gen_count}, mesh {chunk_mesh_gen_count}, col {chunk_col_gen_count} \n\
 Camera: speed {cam_speed:.3}, position {cam_pos:.3?} \n\
-{cam_info}
+{grav_info}
     ");
 }
 
@@ -383,7 +431,7 @@ fn camera_system(
 
     camera.gravity_redirect_enabled =
         !camera.forced_gravity_toggle &&
-        camera_gravity.force.length_squared() > 1.;
+        camera_gravity.force.length() > 90_000.;
     if camera.gravity_redirect_enabled {
         let target_down = camera_gravity.force.normalize();
         let target_down_local = camera_trans.rotation.inverse() * target_down;

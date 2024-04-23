@@ -3,6 +3,10 @@ use std::ops::Mul;
 use bevy::prelude::*;
 use bevy::math::{Affine3A, DAffine3, DMat3, DQuat, DVec3};
 
+// TODO: Gather info about why trans / rot / scale is separated for Transform and not
+// for GlobalTransform
+// (there are bevy issues (and rfcs?) about it)
+
 #[derive(Bundle, Default)]
 pub struct Transform64Bundle {
     pub local: Transform64,
@@ -175,8 +179,6 @@ impl Mul for Transform64 {
     }
 }
 
-// Uses DAffine3.. because that's why bevy uses, i guess because multiplication is
-// faster ?
 #[derive(Component, Debug, PartialEq, Clone, Copy)]
 pub struct GlobalTransform64(DAffine3);
 

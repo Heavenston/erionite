@@ -250,13 +250,12 @@ fn chunks_subdivs_system(
             continue;
         }
 
-        let relative_camera_poses = cameras_poses.iter()
-            .map(|&cp| renderer_trans * cp)
-            .collect::<Vec<_>>();
         let chunk_aabb = chunk.path.get_aabb(options.root_aabb);
+        let renderer_translation = renderer_trans.translation();
 
-        let Some(closest_camera_dist_2) = relative_camera_poses.iter()
-            .map(|&campos| chunk_aabb.closest_point(campos).distance_squared(campos))
+        let Some(closest_camera_dist_2) = cameras_poses.iter()
+            .map(|&cp| cp - renderer_translation)
+            .map(|campos| chunk_aabb.closest_point(campos).distance_squared(campos))
             .min_by_key(|&d| OrderedFloat(d))
         else { continue };
         let closest_camera_dist = closest_camera_dist_2.sqrt();
