@@ -53,9 +53,13 @@ impl Generator for PlanetGenerator {
         let stone_darker_noise = ScalePoint::new(
             Perlin::new(r.gen())
         ).set_scale(1. / 100.);
-        let pink_noise = ScalePoint::new(
+        let special_noise = ScalePoint::new(
             Perlin::new(r.gen())
         ).set_scale(1. / 1.);
+
+        let special_big_noise = ScalePoint::new(
+            Perlin::new(r.gen())
+        ).set_scale(1. / 10000.);
 
         let mut svo = svo::svo_from_sdf(move |&sp| {
             let spa = [sp.x, sp.y, sp.z].map(|x| x);
@@ -84,10 +88,15 @@ impl Generator for PlanetGenerator {
 
             let mut material = svo::TerrainCellKind::Air;
             if dist <= 0. {
+                let special = if special_big_noise.get(spa) < 0. {
+                    svo::TerrainCellKind::Pink
+                } else {
+                    svo::TerrainCellKind::Blue
+                };
                 material = [
                     (svo::TerrainCellKind::Stone, stone_noise.get(spa)),
                     (svo::TerrainCellKind::StoneDarker, stone_darker_noise.get(spa)),
-                    (svo::TerrainCellKind::Pink, pink_noise.get(spa)),
+                    (special, special_noise.get(spa)),
                 ].into_iter().max_by_key(|(_, v)| OrderedFloat(*v)).unwrap().0;
             }
 

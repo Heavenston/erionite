@@ -110,8 +110,8 @@ fn setup_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut camera: ResMut<Cam>,
 ) {
-    let subdivs = 15u32;
-    let aabb_size = 2f64.powi(subdivs as i32);
+    let subdivs = 17u32;
+    let aabb_size = 2f64.powi((subdivs-2) as i32);
     let radius = aabb_size / 4.;
     let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(aabb_size));
 

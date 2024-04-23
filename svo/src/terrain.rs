@@ -12,21 +12,7 @@ pub enum TerrainCellKind {
     StoneDarker,
     Stone,
     Pink,
-}
-
-impl TryFrom<u8> for TerrainCellKind {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Invalid),
-            1 => Ok(Self::Air),
-            2 => Ok(Self::StoneDarker),
-            3 => Ok(Self::Stone),
-            4 => Ok(Self::Stone),
-            _ => Err(()),
-        }
-    }
+    Blue,
 }
 
 impl TerrainCellKind {
@@ -37,6 +23,7 @@ impl TerrainCellKind {
             TerrainCellKind::StoneDarker => Color::rgb(0.6, 0.6, 0.6),
             TerrainCellKind::Stone => Color::rgb(0.3, 0.3, 0.3),
             TerrainCellKind::Pink => Color::rgb(1., 0., 0.69),
+            TerrainCellKind::Blue => Color::rgb(0.1059, 0.2570, 0.5451),
         }
     }
 }
