@@ -197,7 +197,7 @@ pub struct PackedCell<D: Data> {
         serialize = "D::Internal: serde::Serialize",
         deserialize = "D::Internal: for<'a> serde::Deserialize<'a>",
     ))]
-    levels: Box<[PackedCellLevel<D::Internal>]>,
+    levels: Vec<PackedCellLevel<D::Internal>>,
     /// There is always as leaf level so depth >= 1
     leaf_level: PackedCellLevel<D>,
 }
@@ -209,7 +209,7 @@ impl<D: Data> PackedCell<D> {
     {
         let levels = (0..depth)
             .map(|level| PackedCellLevel::new_filled(level, internal_data.clone()))
-            .collect::<Box<[_]>>();
+            .collect::<Vec<_>>();
 
         Self {
             levels,
@@ -227,9 +227,23 @@ impl<D: Data> PackedCell<D> {
     /// Equivalent to [Self::new_filled(0, data)] but without the D: Clone requirement
     pub fn new_leaf(data: D) -> Self {
         Self {
-            levels: vec![].into_boxed_slice(),
+            levels: vec![],
             leaf_level: PackedCellLevel::new_leaf(data),
         }
+    }
+
+    /// The given level will become the new leaf level and the cell's depth
+    /// will increase by one.
+    /// 
+    /// Panics if the new level isn't of the correct size.
+    pub fn push_level(&mut self, data: Box<[D]>)
+        where D: Data<Internal = D>
+    {
+        assert_eq!(data.len(), 8usize.pow(self.depth()+1));
+        let old_leaf = std::mem::replace(&mut self.leaf_level, PackedCellLevel {
+            data,
+        });
+        self.levels.push(old_leaf);
     }
 
     /// used for update_{all, on_path}
@@ -400,7 +414,7 @@ impl<D: Data> PackedCell<D> {
             let leaf_level = splitted_leaf[comp_index].take().expect("only once");
 
             PackedCell {
-                levels: levels.into_boxed_slice(),
+                levels,
                 leaf_level,
             }
         });
