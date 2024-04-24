@@ -445,7 +445,7 @@ fn camera_system(
 
         let rot_speed = prop.sqrt() * 5.;
         let rot_speed = if prop < 0.001 { angle } else { rot_speed * (time.delta_seconds() as f64) };
-        camera_trans.rotate_local_z(rot_speed * dir);
+        camera_trans.rotate_local_z((rot_speed * dir).clamp(-angle.abs(), angle.abs()));
     }
 
     let mut movement = DVec3::ZERO;
