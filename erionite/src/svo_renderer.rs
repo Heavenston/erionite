@@ -28,13 +28,15 @@ impl Plugin for SvoRendererPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, (
             new_renderer_system,
-            dirty_chunks_drainer_system
-                .run_if(on_timer(Duration::from_millis(500))),
+            dirty_chunks_drainer_system,
             chunks_subdivs_system,
             chunk_split_merge_system,
             chunk_system,
             provider_updates_system,
-        ).chain());
+        )
+            .chain()
+            .run_if(on_timer(Duration::from_millis(125))),
+        );
     }
 }
 
