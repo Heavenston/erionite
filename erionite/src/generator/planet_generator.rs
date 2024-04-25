@@ -61,47 +61,52 @@ impl Generator for PlanetGenerator {
             Perlin::new(r.gen())
         ).set_scale(1. / 10000.);
 
-        let mut svo = svo::svo_from_sdf(move |&sp| {
-            let spa = [sp.x, sp.y, sp.z].map(|x| x);
+        let mut svo = svo::svo_from_sdf(
+            move |_| true,
+            move |&sp| {
+                let spa = [sp.x, sp.y, sp.z].map(|x| x);
 
-            let planet_dist = spa.iter().map(|x| x*x).sum::<f64>();
+                let planet_dist = spa.iter().map(|x| x*x).sum::<f64>();
 
-            if planet_dist < self.radius.powi(2) * 0.5 {
-                return svo::SdfSample {
-                    dist: planet_dist.sqrt() - self.radius,
-                    material: svo::TerrainCellKind::Stone,
+                if planet_dist < self.radius.powi(2) * 0.5 {
+                    return svo::SdfSample {
+                        dist: planet_dist.sqrt() - self.radius,
+                        material: svo::TerrainCellKind::Stone,
+                    };
+                }
+                if planet_dist > self.radius.powi(2) * 1.5 {
+                    return svo::SdfSample {
+                        dist: planet_dist.sqrt() - self.radius,
+                        material: svo::TerrainCellKind::Air,
+                    };
+                }
+
+                let dist = if false {
+                    planet_dist.sqrt() - self.radius
+                }
+                else {
+                    final_noise.get(spa)
                 };
-            }
-            if planet_dist > self.radius.powi(2) * 1.5 {
-                return svo::SdfSample {
-                    dist: planet_dist.sqrt() - self.radius,
-                    material: svo::TerrainCellKind::Air,
-                };
-            }
 
-            let dist = if false {
-                planet_dist.sqrt() - self.radius
-            }
-            else {
-                final_noise.get(spa)
-            };
+                let mut material = svo::TerrainCellKind::Air;
+                if dist <= 0. {
+                    let special = if special_big_noise.get(spa) < 0. {
+                        svo::TerrainCellKind::Pink
+                    } else {
+                        svo::TerrainCellKind::Blue
+                    };
+                    material = [
+                        (svo::TerrainCellKind::Stone, stone_noise.get(spa)),
+                        (svo::TerrainCellKind::StoneDarker, stone_darker_noise.get(spa)),
+                        (special, special_noise.get(spa)),
+                    ].into_iter().max_by_key(|(_, v)| OrderedFloat(*v)).unwrap().0;
+                }
 
-            let mut material = svo::TerrainCellKind::Air;
-            if dist <= 0. {
-                let special = if special_big_noise.get(spa) < 0. {
-                    svo::TerrainCellKind::Pink
-                } else {
-                    svo::TerrainCellKind::Blue
-                };
-                material = [
-                    (svo::TerrainCellKind::Stone, stone_noise.get(spa)),
-                    (svo::TerrainCellKind::StoneDarker, stone_darker_noise.get(spa)),
-                    (special, special_noise.get(spa)),
-                ].into_iter().max_by_key(|(_, v)| OrderedFloat(*v)).unwrap().0;
-            }
-
-            svo::SdfSample { dist, material }
-        }, subdivs, aabb);
+                svo::SdfSample { dist, material }
+            },
+            subdivs,
+            aabb,
+        );
 
         svo.update_all();
         // let rs = svo.simplify();

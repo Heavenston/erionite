@@ -6,6 +6,7 @@ use super::*;
 #[derive(Debug, Clone)]
 pub struct SphereGenerator {
     pub radius: f64,
+    pub material: svo::TerrainCellKind,
 }
 
 impl Generator for SphereGenerator {
@@ -17,10 +18,12 @@ impl Generator for SphereGenerator {
         let aabb = path.get_aabb(root_aabb);
         let radius = self.radius;
 
-        let mut svo = svo::svo_from_sdf(move |sp| {
-            let dist = sp.distance(DVec3::ZERO) - radius;
+        let global_material = self.material;
+
+        let mut svo = svo::svo_from_sdf(move |_| true, move |sp| {
+            let dist = sp.length() - radius;
             let material = if dist < 0. {
-                TerrainCellKind::Stone
+                global_material
             } else {
                 TerrainCellKind::Air
             };

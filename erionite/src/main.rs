@@ -147,8 +147,12 @@ fn setup_system(
         svo_provider: generator_svo_provider::GeneratorSvoProvider::new(
             generator::PlanetGenerator {
                 radius,
-                seed: 5,
+                seed: 1,
             },
+            // generator::SphereGenerator {
+            //     radius,
+            //     material: svo::TerrainCellKind::Pink,
+            // },
             aabb
         ).into(),
     }).insert((
@@ -190,6 +194,10 @@ fn setup_system(
                 radius,
                 seed: 2,
             },
+            // generator::SphereGenerator {
+            //     radius,
+            //     material: svo::TerrainCellKind::Blue,
+            // },
             aabb,
         ).into(),
     }).insert((
