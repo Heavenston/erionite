@@ -1,5 +1,5 @@
 
-use std::fmt::Debug;
+use std::{fmt::Debug, mem::MaybeUninit};
 use either::Either;
 
 pub trait InternalData: Debug + Sized {
@@ -54,6 +54,12 @@ impl SplittableData for () {
         ((), [(); 8])
     }
 }
+
+impl<D: Data> Data for MaybeUninit<D> {
+    type Internal = MaybeUninit<D::Internal>;
+}
+
+impl<D: InternalData> InternalData for MaybeUninit<D> {}
 
 macro_rules! impl_tuple {
     (

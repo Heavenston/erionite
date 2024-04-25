@@ -249,10 +249,10 @@ impl CellPath {
     /// Can be use to *index* (wink) into an array
     /// Note that it can only work for paths of the same depth, collisions can
     /// occure between paths of different depths
-    pub fn index(&self) -> CellPathInner {
+    pub fn index(&self) -> usize {
         let marker_bit = self.mark_bit_position();
 
-        self.0 & !(CellPathInner::MAX << marker_bit)
+        usize::try_from(self.0 & !(CellPathInner::MAX << marker_bit)).unwrap()
     }
 
     pub fn from_index(index: CellPathInner, depth: u32) -> Self {
@@ -289,7 +289,7 @@ impl CellPath {
 
     pub fn extend(&mut self, other: &Self) {
         assert!(Self::MAX_CAPACITY > self.len() + other.len());
-        self.0 = (self.0 << (other.len() * 3)) | other.index();
+        self.0 = (self.0 << (other.len() * 3)) | (other.index() as CellPathInner);
     }
 
     pub fn extended(mut self, other: &Self) -> Self {

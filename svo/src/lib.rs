@@ -2,6 +2,8 @@
 #![feature(array_try_map)]
 #![feature(iter_array_chunks)]
 #![feature(impl_trait_in_assoc_type)]
+#![feature(new_uninit)]
+#![feature(maybe_uninit_write_slice)]
 
 mod sdf;
 pub use sdf::*;

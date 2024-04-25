@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt::Debug};
+use std::{collections::VecDeque, fmt::Debug, mem::MaybeUninit};
 
 use utils::AsVecExt;
 
@@ -61,6 +61,18 @@ impl<D> PackedCellLevel<D> {
             });
 
         out
+    }
+}
+
+impl<D> PackedCellLevel<MaybeUninit<D>> {
+    pub fn uninit(depth: u32) -> Self {
+        Self {
+            data: Box::new_uninit_slice(level_size(depth) as usize),
+        }
+    }
+
+    pub unsafe fn assume_init(self) -> PackedCellLevel<D> {
+        PackedCellLevel { data: self.data.assume_init() }
     }
 }
 
@@ -230,6 +242,57 @@ impl<D: Data> PackedCell<D> {
             levels: vec![],
             leaf_level: PackedCellLevel::new_leaf(data),
         }
+    }
+
+    pub fn new_uninit(depth: u32) -> PackedCell<MaybeUninit<D>> {
+        PackedCell::<MaybeUninit<D>>::uninit(depth)
+    }
+
+    /// Merges the given packed cells together into a new mega packed cell
+    /// Returns None if all children do not have the same depth
+    pub fn new_repack(
+        children: [&PackedCell<D>; 8],
+        new_root: D::Internal,
+    ) -> Option<Self>
+        where D: Copy,
+              D::Internal: Copy,
+    {
+        let depth = children[0].depth();
+        if !children.iter().all(|c| c.depth() == depth) {
+            return None;
+        }
+        let target_depth = depth + 1;
+
+        let mut out = Self::new_uninit(target_depth);
+
+        out.levels[0].data[0].write(new_root);
+
+        for comp in CellPath::components() {
+            let compi = comp.value() as usize;
+            let child = children[compi];
+            for levelu in 1..target_depth {
+                let leveli = levelu as usize;
+                let level_size = 8usize.pow(levelu);
+                let sub_level_size = level_size / 8;
+                let target = &mut out.levels[leveli]
+                    .data[compi*sub_level_size..(compi+1)*sub_level_size];
+                MaybeUninit::copy_from_slice(
+                    target,
+                    &child.levels[leveli-1].data,
+                );
+            }
+
+            let leaf_size = 8usize.pow(target_depth);
+            let sub_leaf_size = leaf_size / 8;
+            let target = &mut out.leaf_level
+                .data[compi*sub_leaf_size..(compi+1)*sub_leaf_size];
+            MaybeUninit::copy_from_slice(
+                target,
+                &child.leaf_level.data,
+            );
+        }
+
+        Some(unsafe { out.assume_init() })
     }
 
     /// The given level will become the new leaf level and the cell's depth
@@ -449,5 +512,25 @@ impl<D> Default for PackedCell<D>
 impl<D: Data, Ptr: SvoPtr<D>> Into<Cell<D, Ptr>> for PackedCell<D> {
     fn into(self) -> Cell<D, Ptr> {
         Cell::Packed(self)
+    }
+}
+
+impl<D: Data> PackedCell<MaybeUninit<D>> {
+    pub fn uninit(depth: u32) -> Self {
+        let levels = (0..depth)
+            .map(|level| PackedCellLevel::uninit(level))
+            .collect::<Vec<_>>();
+
+        Self {
+            levels,
+            leaf_level: PackedCellLevel::uninit(depth),
+        }
+    }
+
+    pub unsafe fn assume_init(self) -> PackedCell<D> {
+        PackedCell::<D> {
+            levels: self.levels.into_iter().map(|level| level.assume_init()).collect(),
+            leaf_level: self.leaf_level.assume_init(),
+        }
     }
 }
