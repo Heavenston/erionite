@@ -25,7 +25,7 @@ impl Generator for PlanetGenerator {
         let heigth_noise = Fbm::<Simplex>::new(r.gen())
             .set_frequency(0.00025)
             // .set_lacunarity(1.5)
-            .set_persistence(0.5)
+            .set_persistence(0.58)
             .set_octaves(10);
         let heigth_noise = ScaleBias::new(heigth_noise)
             .set_scale(300.);
@@ -59,7 +59,7 @@ impl Generator for PlanetGenerator {
 
         let special_big_noise = ScalePoint::new(
             Perlin::new(r.gen())
-        ).set_scale(1. / 10000.);
+        ).set_scale(1. / 1000.);
 
         let svo = svo::svo_from_sdf(
             move |_| true,
