@@ -10,7 +10,7 @@ use svo_provider::generator_svo_provider;
 pub mod task_runner;
 mod gravity;
 
-use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*, window::{CursorGrabMode, PrimaryWindow}};
+use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, NotShadowCaster, NotShadowReceiver}, prelude::*, render::mesh::SphereMeshBuilder, window::{CursorGrabMode, PrimaryWindow}};
 use utils::DAabb;
 use doprec::{ DoprecPlugin, FloatingOrigin, Transform64, Transform64Bundle };
 
@@ -108,6 +108,7 @@ struct DebugTextComponent;
 fn setup_system(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
     mut camera: ResMut<Cam>,
 ) {
     let subdivs = 17u32;
@@ -117,6 +118,40 @@ fn setup_system(
 
     log::info!("AABB Size: {aabb_size}");
     log::info!("Planet radius: {radius}");
+
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(SphereMeshBuilder::new(
+                10_000.,
+                bevy::render::mesh::SphereKind::Ico { subdivisions: 10 },
+            ).build()),
+            material: materials.add(StandardMaterial {
+                base_color: Color::WHITE,
+                emissive: Color::WHITE * 1200.,
+                unlit: true,
+                ..default()
+            }),
+            ..PbrBundle::default()
+        },
+        NotShadowCaster,
+        NotShadowReceiver,
+    )).insert(Transform64Bundle {
+        local: Transform64::from_translation(DVec3::new(0., 0., 1_000_000.)),
+        ..default()
+    });
+
+    commands.spawn(DirectionalLightBundle {
+        transform: Transform::default(),
+        cascade_shadow_config: CascadeShadowConfigBuilder {
+            maximum_distance: 1_000_000.,
+            ..default()
+        }.build(),
+        directional_light: DirectionalLight {
+            shadows_enabled: true,
+            ..default()
+        },
+        ..default()
+    }).insert(Transform64Bundle::default());
 
     let mat = materials.add(StandardMaterial {
         perceptual_roughness: 0.8,
@@ -207,19 +242,6 @@ fn setup_system(
         gravity::Attractor,
     ));
 
-    commands.spawn(DirectionalLightBundle {
-        transform: Transform::default(),
-        cascade_shadow_config: CascadeShadowConfigBuilder {
-            maximum_distance: 1_000_000.,
-            ..default()
-        }.build(),
-        directional_light: DirectionalLight {
-            shadows_enabled: true,
-            ..default()
-        },
-        ..default()
-    }).insert(Transform64Bundle::default());
-
     let cam_pos = DVec3::new(
         radius*4.,
         0.,
@@ -229,7 +251,12 @@ fn setup_system(
     
     // camera
     camera.entity = Some(commands
-        .spawn(Camera3dBundle::default())
+        .spawn(Camera3dBundle {
+            camera: Camera {
+                ..default()
+            },
+            ..default()
+        })
         .insert(Transform64Bundle {
             local: Transform64::from_translation(cam_pos)
                 .looking_at(DVec3::NEG_X + cam_pos, cam_pos.normalize()),
