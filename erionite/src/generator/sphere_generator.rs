@@ -20,7 +20,7 @@ impl Generator for SphereGenerator {
 
         let global_material = self.material;
 
-        let mut svo = svo::svo_from_sdf(move |_| true, move |sp| {
+        let svo = svo::svo_from_sdf(move |_| false, move |sp| {
             let dist = sp.length() - radius;
             let material = if dist < 0. {
                 global_material
@@ -31,7 +31,6 @@ impl Generator for SphereGenerator {
             svo::SdfSample { dist, material }
         }, subdivs, aabb);
 
-        svo.update_all();
         // let rs = svo.simplify();
         // log::trace!("Simplified svo: {rs}");
         svo

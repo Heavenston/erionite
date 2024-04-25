@@ -61,7 +61,7 @@ impl Generator for PlanetGenerator {
             Perlin::new(r.gen())
         ).set_scale(1. / 10000.);
 
-        let mut svo = svo::svo_from_sdf(
+        let svo = svo::svo_from_sdf(
             move |_| true,
             move |&sp| {
                 let spa = [sp.x, sp.y, sp.z].map(|x| x);
@@ -108,7 +108,6 @@ impl Generator for PlanetGenerator {
             aabb,
         );
 
-        svo.update_all();
         // let rs = svo.simplify();
         // log::trace!("Simplified svo: {rs}");
         svo
