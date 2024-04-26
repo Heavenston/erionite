@@ -10,7 +10,7 @@ use svo_provider::generator_svo_provider;
 pub mod task_runner;
 mod gravity;
 
-use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, NotShadowCaster, NotShadowReceiver}, prelude::*, render::mesh::SphereMeshBuilder, window::{CursorGrabMode, PrimaryWindow}};
+use bevy::{core_pipeline::bloom::{BloomCompositeMode, BloomSettings}, diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, NotShadowCaster, NotShadowReceiver}, prelude::*, render::mesh::SphereMeshBuilder, window::{CursorGrabMode, PrimaryWindow}};
 use utils::DAabb;
 use doprec::{ DoprecPlugin, FloatingOrigin, Transform64, Transform64Bundle };
 
@@ -126,8 +126,8 @@ fn setup_system(
                 bevy::render::mesh::SphereKind::Ico { subdivisions: 10 },
             ).build()),
             material: materials.add(StandardMaterial {
-                base_color: Color::WHITE,
-                emissive: Color::WHITE * 1200.,
+                base_color: Color::WHITE * 1_000.,
+                // emissive: Color::WHITE * 500.,
                 unlit: true,
                 ..default()
             }),
@@ -253,6 +253,7 @@ fn setup_system(
     camera.entity = Some(commands
         .spawn(Camera3dBundle {
             camera: Camera {
+                hdr: true,
                 ..default()
             },
             ..default()
@@ -265,6 +266,12 @@ fn setup_system(
         .insert((
             FloatingOrigin,
             GravityFieldSample::default(),
+            BloomSettings {
+                intensity: 0.02,
+                composite_mode: BloomCompositeMode::EnergyConserving,
+
+                ..default()
+            },
         ))
         .id()
     );
