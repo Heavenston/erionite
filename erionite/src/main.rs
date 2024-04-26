@@ -10,7 +10,7 @@ use svo_provider::generator_svo_provider;
 pub mod task_runner;
 mod gravity;
 
-use bevy::{core_pipeline::bloom::{BloomCompositeMode, BloomSettings}, diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, NotShadowCaster, NotShadowReceiver}, prelude::*, render::mesh::SphereMeshBuilder, window::{CursorGrabMode, PrimaryWindow}};
+use bevy::{core_pipeline::{bloom::{BloomCompositeMode, BloomSettings}, Skybox}, diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, NotShadowCaster, NotShadowReceiver}, prelude::*, render::mesh::SphereMeshBuilder, window::{CursorGrabMode, PrimaryWindow}};
 use utils::DAabb;
 use doprec::{ DoprecPlugin, FloatingOrigin, Transform64, Transform64Bundle };
 
@@ -110,6 +110,8 @@ fn setup_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut camera: ResMut<Cam>,
+
+    mut assets: Res<AssetServer>,
 ) {
     let subdivs = 17u32;
     let aabb_size = 2f64.powi((subdivs-2) as i32);
@@ -271,6 +273,10 @@ fn setup_system(
                 composite_mode: BloomCompositeMode::EnergyConserving,
 
                 ..default()
+            },
+            Skybox {
+                image: assets.load("images/skybox/skybox.ktx2"),
+                brightness: 1000.0,
             },
         ))
         .id()
