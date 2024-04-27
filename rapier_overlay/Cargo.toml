@@ -5,4 +5,7 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.13.2", default-features = false }
+doprec = { path = "../doprec" }
+getset = "0.1.2"
+log = "0.4.21"
 rapier3d-f64 = { version = "0.18.0", features = ["serde", "simd-stable"] }
