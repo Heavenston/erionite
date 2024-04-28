@@ -1,4 +1,5 @@
 use bevy::{prelude::*, utils::HashMap};
+use doprec::Transform64;
 
 use crate::rapier;
 use rapier::{
@@ -24,6 +25,8 @@ pub struct RapierContext {
     pub entities2colliders: HashMap<Entity, ColliderHandle>,
     /// used for deletion as bevy forgets the component before we can read it
     pub entities2rigidbodies: HashMap<Entity, RigidBodyHandle>,
+
+    pub entities_last_set_transform: HashMap<Entity, Transform64>,
 }
 
 impl RapierContext {

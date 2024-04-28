@@ -127,7 +127,7 @@ fn setup_system(
 
         let origin = DVec3::new(-20., 0.1, 0.);
 
-        let level_max = 22;
+        let level_max = 50;
         for level in 0..level_max {
             let cube_count = level_max - level;
             let level_start = origin +

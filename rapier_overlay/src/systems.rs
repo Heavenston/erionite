@@ -8,26 +8,23 @@ pub fn physics_bevy2rapier_sync_system(
     mut context: ResMut<RapierContext>,
 
     rigid_bodies_query: Query<(
+        Entity,
         &RigidBodyHandleComp,
         &Transform64,
     ), Changed<Transform64>>,
 ) {
-    for (handle_comp, transform_comp) in rigid_bodies_query.iter() {
-        let Some(rigid_body) = context.rigid_body_set.get_mut(handle_comp.handle())
+    for (entity, handle_comp, transform_comp) in rigid_bodies_query.iter() {
+        let RapierContext { rigid_body_set, entities_last_set_transform, .. }
+            = &mut *context;
+
+        let Some(rigid_body) = rigid_body_set.get_mut(handle_comp.handle())
         else { continue; };
 
-        // let mut new_transform = *transform_comp;
-        // new_transform.translation = rigid_body.translation().to_bevy();
-        // new_transform.rotation = rigid_body.rotation().to_bevy();
-        // if new_transform != *transform_comp {
-        //     *transform_comp = new_transform;
-        // }
-        let tt = transform_comp.translation.to_rapier();
-        if rigid_body.translation() != &tt {
+        if Some(transform_comp) != entities_last_set_transform.get(&entity) {
+            entities_last_set_transform.insert(entity, *transform_comp);
+            let tt = transform_comp.translation.to_rapier();
             rigid_body.set_translation(tt, true);
-        }
-        let rr = transform_comp.rotation.to_rapier();
-        if rigid_body.rotation() != &rr {
+            let rr = transform_comp.rotation.to_rapier();
             rigid_body.set_rotation(rr, true);
         }
     }
@@ -66,9 +63,10 @@ pub fn physics_step_system(
 }
 
 pub fn physics_rapier2bevy_sync_system(
-    context: ResMut<RapierContext>,
+    mut context: ResMut<RapierContext>,
 
     mut rigid_bodies_query: Query<(
+        Entity,
         &RigidBodyHandleComp,
         &mut RigidBodySleepingComp,
         &mut VelocityComp,
@@ -76,19 +74,25 @@ pub fn physics_rapier2bevy_sync_system(
         &mut Transform64,
     )>,
 ) {
-    for (handle_comp, mut sleeping_comp, mut linvel_comp, mut angvel_comp, mut transform_comp) in rigid_bodies_query.iter_mut() {
-        let Some(rigid_body) = context.rigid_body_set.get(handle_comp.handle())
+    let RapierContext { rigid_body_set, entities_last_set_transform, .. }
+        = &mut *context;
+
+    for (entity, handle_comp, mut sleeping_comp, mut linvel_comp, mut angvel_comp, mut transform_comp) in rigid_bodies_query.iter_mut() {
+        let Some(rigid_body) = rigid_body_set.get(handle_comp.handle())
         else { continue; };
 
         if sleeping_comp.sleeping != rigid_body.is_sleeping() {
             sleeping_comp.sleeping = rigid_body.is_sleeping();
         }
 
-        let mut new_transform = *transform_comp;
-        new_transform.rotation = rigid_body.rotation().to_bevy();
-        new_transform.translation = rigid_body.translation().to_bevy();
-        if new_transform != *transform_comp {
-            *transform_comp = new_transform;
+        if rigid_body.is_moving() {
+            let mut new_transform = *transform_comp;
+            new_transform.rotation = rigid_body.rotation().to_bevy();
+            new_transform.translation = rigid_body.translation().to_bevy();
+            if new_transform != *transform_comp {
+                entities_last_set_transform.insert(entity, new_transform);
+                *transform_comp = new_transform;
+            }
         }
 
         let new_linvel = rigid_body.linvel().to_bevy();
