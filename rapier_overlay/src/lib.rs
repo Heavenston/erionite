@@ -1,6 +1,8 @@
+#![feature(iter_array_chunks)]
+
 pub mod systems;
-use bevy::math::DQuat;
-use rapier::na::{Quaternion, UnitQuaternion};
+use bevy::{math::DQuat, render::mesh::{Indices, Mesh, PrimitiveTopology, VertexAttributeValues}};
+use rapier::{geometry::TriMesh, na::{Point3, Quaternion, UnitQuaternion}};
 pub(crate) use systems::*;
 
 mod plugin;
@@ -98,5 +100,33 @@ impl LibConvert for UnitQuaternion<Float> {
             self.coords.z,
             self.coords.w,
         )
+    }
+}
+
+pub trait BevyMeshExt {
+    fn to_trimesh(&self) -> Option<TriMesh>;
+}
+
+impl BevyMeshExt for Mesh {
+    fn to_trimesh(&self) -> Option<TriMesh> {
+        if self.primitive_topology() != PrimitiveTopology::TriangleList {
+            return None;
+        }
+
+        let indices = self.indices()?;
+
+        let Some(VertexAttributeValues::Float32x3(vertices)) =
+            self.attribute(Mesh::ATTRIBUTE_POSITION)
+        else { return None; };
+
+        Some(TriMesh::new(
+            vertices.iter().map(|&[x, y, z]| Point3::new(
+                x as Float, y as Float, z as Float
+            )).collect(),
+            match indices {
+                Indices::U16(u) => u.iter().copied().map(u32::from).array_chunks().collect(),
+                Indices::U32(u) => u.iter().copied().array_chunks().collect(),
+            },
+        ))
     }
 }
