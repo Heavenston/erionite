@@ -1,6 +1,5 @@
 use bevy_math::DVec3;
 use half::f16;
-use itertools::Itertools;
 use utils::DAabb;
 
 use crate::{self as svo, CellPath, PackedCell};

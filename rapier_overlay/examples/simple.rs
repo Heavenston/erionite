@@ -4,7 +4,7 @@
 use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*, render::mesh::{PlaneMeshBuilder, SphereKind, SphereMeshBuilder}, window::{CursorGrabMode, PrimaryWindow}};
 use doprec::{ DoprecPlugin, FloatingOrigin, Transform64, Transform64Bundle };
 use rapier_overlay::*;
-use rapier::{geometry::ColliderBuilder, na::Unit};
+use rapier::{geometry::ColliderBuilder};
 
 fn setup_logger() -> Result<(), Box<dyn std::error::Error>> {
     use fern::colors::{ ColoredLevelConfig, Color };

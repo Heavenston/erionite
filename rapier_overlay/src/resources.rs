@@ -2,7 +2,7 @@ use bevy::{prelude::*, utils::HashMap};
 
 use crate::rapier;
 use rapier::{
-    dynamics::{CCDSolver, ImpulseJointSet, IntegrationParameters, IslandManager, MultibodyJointSet, RigidBodyHandle, RigidBodySet},
+    dynamics::{CCDSolver, ImpulseJointSet, IslandManager, MultibodyJointSet, RigidBodyHandle, RigidBodySet},
     geometry::{BroadPhase, ColliderHandle, ColliderSet, NarrowPhase},
     pipeline::{PhysicsPipeline, QueryPipeline}
 };

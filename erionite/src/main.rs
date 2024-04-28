@@ -111,7 +111,7 @@ fn setup_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut camera: ResMut<Cam>,
 
-    mut assets: Res<AssetServer>,
+    assets: Res<AssetServer>,
 ) {
     let subdivs = 17u32;
     let aabb_size = 2f64.powi((subdivs-2) as i32);

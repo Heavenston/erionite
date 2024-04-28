@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use doprec::Transform64;
-use rapier::{dynamics::{RigidBodyActivation, RigidBodyBuilder}, geometry::{ColliderBuilder, ColliderMassProps}, na::Translation3};
+use rapier::{dynamics::{RigidBodyActivation, RigidBodyBuilder}, na::Translation3};
 
 use crate::*;
 
