@@ -1,4 +1,4 @@
-use bevy::{math::DVec3, prelude::*};
+use bevy::prelude::*;
 use doprec::Transform64;
 use rapier::dynamics::IntegrationParameters;
 
@@ -33,7 +33,11 @@ pub fn physics_bevy2rapier_sync_system(
 pub fn physics_step_system(
     time: Res<Time<Fixed>>,
     mut context: ResMut<RapierContext>,
+    cfg: Option<Res<RapierConfig>>,
 ) {
+    let default_cfg = RapierConfig::default();
+    let cfg = cfg.as_ref().map(|res| &**res).unwrap_or(&default_cfg);
+
     let params = IntegrationParameters {
         dt: time.delta_seconds_f64(),
         ..default()
@@ -46,7 +50,7 @@ pub fn physics_step_system(
     } = &mut *context;
 
     physics_pipeline.step(
-        &DVec3::new(0., -9.81, 0.).to_rapier(),
+        &cfg.gravity.to_rapier(),
         &params,
         island_manager,
         broad_phase,

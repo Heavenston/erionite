@@ -1,7 +1,7 @@
-use bevy::{prelude::*, utils::HashMap};
+use bevy::{math::DVec3, prelude::*, utils::HashMap};
 use doprec::Transform64;
 
-use crate::rapier;
+use crate::*;
 use rapier::{
     dynamics::{CCDSolver, ImpulseJointSet, IslandManager, MultibodyJointSet, RigidBodyHandle, RigidBodySet},
     geometry::{BroadPhase, ColliderHandle, ColliderSet, NarrowPhase},
@@ -30,4 +30,17 @@ pub struct RapierContext {
 }
 
 impl RapierContext {
+}
+
+#[derive(Resource)]
+pub struct RapierConfig {
+    pub gravity: Vector3,
+}
+
+impl Default for RapierConfig {
+    fn default() -> Self {
+        Self {
+            gravity: DVec3::new(0., -9.8, 0.),
+        }
+    }
 }
