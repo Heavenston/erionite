@@ -4,32 +4,6 @@ use rapier::dynamics::IntegrationParameters;
 
 use crate::*;
 
-pub fn physics_bevy2rapier_sync_system(
-    mut context: ResMut<RapierContext>,
-
-    rigid_bodies_query: Query<(
-        Entity,
-        &RigidBodyHandleComp,
-        &Transform64,
-    ), Changed<Transform64>>,
-) {
-    for (entity, handle_comp, transform_comp) in rigid_bodies_query.iter() {
-        let RapierContext { rigid_body_set, entities_last_set_transform, .. }
-            = &mut *context;
-
-        let Some(rigid_body) = rigid_body_set.get_mut(handle_comp.handle())
-        else { continue; };
-
-        if Some(transform_comp) != entities_last_set_transform.get(&entity) {
-            entities_last_set_transform.insert(entity, *transform_comp);
-            let tt = transform_comp.translation.to_rapier();
-            rigid_body.set_translation(tt, true);
-            let rr = transform_comp.rotation.to_rapier();
-            rigid_body.set_rotation(rr, true);
-        }
-    }
-}
-
 pub fn physics_step_system(
     time: Res<Time<Fixed>>,
     mut context: ResMut<RapierContext>,

@@ -27,7 +27,6 @@ impl Plugin for RapierPlugin {
                 collider_init_system,
             ).chain())
             .add_systems(FixedUpdate, (
-                physics_bevy2rapier_sync_system,
                 physics_step_system,
                 physics_rapier2bevy_sync_system,
             ).chain())

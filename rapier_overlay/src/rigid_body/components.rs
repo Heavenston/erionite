@@ -10,6 +10,7 @@ pub struct RigidBodyBundle {
     pub sleeping: RigidBodySleepingComp,
     pub linvel: VelocityComp,
     pub angvel: AngularVelocityComp,
+    pub external_force: ExternalForceComp,
 }
 
 impl RigidBodyBundle {
@@ -23,6 +24,7 @@ impl RigidBodyBundle {
             sleeping: default(),
             linvel: default(),
             angvel: default(),
+            external_force: default(),
         }
     }
 
@@ -96,4 +98,10 @@ impl VelocityComp {
 pub struct AngularVelocityComp {
     #[getset(get_copy = "pub")]
     pub(crate) angvel: Vector3,
+}
+
+#[derive(Default, Debug, Component, Clone)]
+pub struct ExternalForceComp {
+    pub force: Vector3,
+    pub torque: Vector3,
 }

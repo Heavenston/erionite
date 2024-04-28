@@ -114,6 +114,16 @@ pub fn rigid_body_update_system(
     ), (
         Changed<RigidBodySleepingComp>,
     )>,
+    forces_changed_query: Query<(
+        &RigidBodyHandleComp, &ExternalForceComp,
+    ), (
+        Changed<ExternalForceComp>,
+    )>,
+    transform_changed_query: Query<(
+        Entity, &RigidBodyHandleComp, &Transform64,
+    ), (
+        Changed<Transform64>,
+    )>,
 ) {
     for (handle, comp) in &rigid_body_changed_query {
         let Some(rigid_body) = context.rigid_body_set.get_mut(handle.handle)
@@ -123,7 +133,7 @@ pub fn rigid_body_update_system(
         };
 
         rigid_body.set_enabled(comp.enabled);
-        rigid_body.set_body_type(comp.kind, false);
+        rigid_body.set_body_type(comp.kind, true);
     }
 
     for (handle, comp) in &damping_changed_query {
@@ -151,6 +161,38 @@ pub fn rigid_body_update_system(
         else {
             rigid_body.activation_mut().linear_threshold = -1.;
             rigid_body.activation_mut().angular_threshold = -1.;
+        }
+    }
+
+    for (handle, comp) in &forces_changed_query {
+        let Some(rigid_body) = context.rigid_body_set.get_mut(handle.handle)
+        else {
+            log::warn!("Invlid Rigid Body handle");
+            continue;
+        };
+
+        rigid_body.reset_forces(true);
+        rigid_body.reset_torques(true);
+        rigid_body.add_force(comp.force.to_rapier(), true);
+        rigid_body.add_torque(comp.torque.to_rapier(), true);
+    }
+
+    for (entity, handle, comp) in &transform_changed_query {
+        let RapierContext { rigid_body_set, entities_last_set_transform, .. }
+            = &mut *context;
+
+        let Some(rigid_body) = rigid_body_set.get_mut(handle.handle)
+        else {
+            log::warn!("Invlid Rigid Body handle");
+            continue;
+        };
+
+        if Some(comp) != entities_last_set_transform.get(&entity) {
+            entities_last_set_transform.insert(entity, *comp);
+            let tt = comp.translation.to_rapier();
+            rigid_body.set_translation(tt, true);
+            let rr = comp.rotation.to_rapier();
+            rigid_body.set_rotation(rr, true);
         }
     }
 }
