@@ -109,6 +109,6 @@ pub fn update_on_floating_origin_system(
     let floating_trans = GlobalTransform64::from_translation(-floating_origin.translation());
     
     for (&global_trans, mut bevy_global_trans) in &mut all_transforms {
-        *bevy_global_trans = (global_trans * floating_trans).as_32();
+        *bevy_global_trans = (floating_trans * global_trans).as_32();
     }
 }
