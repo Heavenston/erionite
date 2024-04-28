@@ -18,6 +18,7 @@ impl Plugin for RapierPlugin {
             .add_systems(PostUpdate, (
                 // update before init because there is no need to update a
                 // collider that has just been created
+                rigid_body_remove_system,
                 rigid_body_update_system,
                 rigid_body_init_system,
 

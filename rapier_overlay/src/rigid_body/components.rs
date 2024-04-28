@@ -3,7 +3,39 @@ use crate::*;
 
 use rapier::dynamics::{RigidBodyHandle, RigidBodyType};
 
-#[derive(getset::CopyGetters, Debug, Component, Clone)]
+#[derive(Debug, Bundle, Clone)]
+pub struct RigidBodyBundle {
+    pub rigid_body: RigidBodyComp,
+    pub damping: RigidBodyDampingComp,
+    pub sleeping: RigidBodySleepingComp,
+    pub linvel: VelocityComp,
+    pub angvel: AngularVelocityComp,
+}
+
+impl RigidBodyBundle {
+    pub fn new(kind: RigidBodyType) -> Self {
+        Self {
+            rigid_body: RigidBodyComp {
+                kind,
+                enabled: true,
+            },
+            damping: default(),
+            sleeping: default(),
+            linvel: default(),
+            angvel: default(),
+        }
+    }
+
+    pub fn dynamic() -> Self {
+        Self::new(RigidBodyType::Dynamic)
+    }
+
+    pub fn fixed() -> Self {
+        Self::new(RigidBodyType::Fixed)
+    }
+}
+
+#[derive(getset::CopyGetters, Default, Debug, Component, Clone)]
 pub struct RigidBodyHandleComp {
     #[getset(get_copy = "pub")]
     pub(super) handle: RigidBodyHandle,
@@ -21,11 +53,29 @@ pub struct RigidBodyDampingComp {
     pub linear: Float,
 }
 
-#[derive(getset::CopyGetters, Default, Debug, Component, Clone)]
+#[derive(getset::CopyGetters, Debug, Component, Clone)]
 pub struct RigidBodySleepingComp {
     pub can_sleep: bool,
     #[getset(get_copy = "pub")]
     pub(super) sleeping: bool,
+}
+
+impl Default for RigidBodySleepingComp {
+    fn default() -> Self {
+        Self {
+            can_sleep: true,
+            sleeping: false,
+        }
+    }
+}
+
+impl RigidBodySleepingComp {
+    pub fn new(can_sleep: bool) -> Self {
+        Self {
+            can_sleep,
+            ..default()
+        }
+    }
 }
 
 #[derive(getset::CopyGetters, Default, Debug, Component, Clone)]

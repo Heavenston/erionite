@@ -9,3 +9,8 @@ doprec = { path = "../doprec" }
 getset = "0.1.2"
 log = "0.4.21"
 rapier3d-f64 = { version = "0.18.0", features = ["serde", "simd-stable"] }
+utils = { version = "0.0.0", path = "../utils" }
+
+[dev-dependencies]
+bevy = "0.13.2"
+fern = { version = "0.6.2", features = ["colored"] }

@@ -3127,9 +3127,11 @@ version = "0.0.0"
 dependencies = [
  "bevy",
  "doprec",
+ "fern",
  "getset",
  "log",
  "rapier3d-f64",
+ "utils",
 ]
 
 [[package]]

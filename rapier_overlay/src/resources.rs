@@ -2,7 +2,7 @@ use bevy::{prelude::*, utils::HashMap};
 
 use crate::rapier;
 use rapier::{
-    dynamics::{CCDSolver, ImpulseJointSet, IntegrationParameters, IslandManager, MultibodyJointSet, RigidBodySet},
+    dynamics::{CCDSolver, ImpulseJointSet, IntegrationParameters, IslandManager, MultibodyJointSet, RigidBodyHandle, RigidBodySet},
     geometry::{BroadPhase, ColliderHandle, ColliderSet, NarrowPhase},
     pipeline::{PhysicsPipeline, QueryPipeline}
 };
@@ -22,7 +22,10 @@ pub struct RapierContext {
     pub ccd_solver: CCDSolver,
     pub query_pipeline: QueryPipeline,
 
+    /// used for deletion as bevy forgets the component before we can read it
     pub entities2colliders: HashMap<Entity, ColliderHandle>,
+    /// used for deletion as bevy forgets the component before we can read it
+    pub entities2rigidbodies: HashMap<Entity, RigidBodyHandle>,
 }
 
 impl RapierContext {

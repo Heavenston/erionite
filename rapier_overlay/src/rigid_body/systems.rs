@@ -10,10 +10,10 @@ pub fn rigid_body_init_system(
     new_rigid_body_query: Query<(
         Entity,
         &RigidBodyComp,
-        Option<&RigidBodyDampingComp>,
-        Option<&RigidBodySleepingComp>,
-        Option<&VelocityComp>,
-        Option<&AngularVelocityComp>,
+        &RigidBodyDampingComp,
+        &RigidBodySleepingComp,
+        &VelocityComp,
+        &AngularVelocityComp,
 
         Option<&ColliderHandleComp>,
     ), (
@@ -28,19 +28,11 @@ pub fn rigid_body_init_system(
         collider,
     ) in &new_rigid_body_query {
         let mut rigid_body = RigidBodyBuilder::new(rigid_body.kind);
-        if let Some(damping) = damping {
-            rigid_body.linear_damping = damping.linear;
-            rigid_body.angular_damping = damping.angular;
-        }
-        if let Some(sleeping) = sleeping {
-            rigid_body.can_sleep = sleeping.can_sleep;
-        }
-        if let Some(velocity) = velocity {
-            rigid_body.linvel = velocity.linvel.to_rapier();
-        }
-        if let Some(angular_velocity) = angular_velocity {
-            rigid_body.angvel = angular_velocity.angvel.to_rapier();
-        }
+        rigid_body.linear_damping = damping.linear;
+        rigid_body.angular_damping = damping.angular;
+        rigid_body.can_sleep = sleeping.can_sleep;
+        rigid_body.linvel = velocity.linvel.to_rapier();
+        rigid_body.angvel = angular_velocity.angvel.to_rapier();
 
         let handle = context.rigid_body_set.insert(rigid_body);
 
@@ -54,6 +46,46 @@ pub fn rigid_body_init_system(
             let RapierContext { collider_set, rigid_body_set, .. } = &mut *context;
             collider_set.set_parent(col_comp.handle(), Some(handle), rigid_body_set);
         }
+    }
+}
+
+pub fn rigid_body_remove_system(
+    mut commands: Commands,
+    mut context: ResMut<RapierContext>,
+
+    invalid_handles: Query<Entity, (With<RigidBodyHandleComp>, Or<(
+        Without<RigidBodyComp>,
+        Without<RigidBodyDampingComp>,
+        Without<RigidBodySleepingComp>,
+    )>)>,
+        
+    mut removed_handles: RemovedComponents<RigidBodyHandleComp>,
+) {
+    for entity in std::iter::empty()
+        .chain(
+            removed_handles.read()
+        )
+        .chain(
+            invalid_handles.iter().inspect(|&e| {
+                commands.entity(e).remove::<RigidBodyHandleComp>();
+            })
+        )
+    {
+        let Some(handle) = context.entities2rigidbodies.remove(&entity)
+        else { continue; };
+
+        let RapierContext {
+            collider_set, island_manager, rigid_body_set, impulse_joint_set, multibody_joint_set, ..
+        } = &mut *context;
+
+        rigid_body_set.remove(
+            handle, 
+            island_manager, 
+            collider_set, 
+            impulse_joint_set, 
+            multibody_joint_set,
+            false
+        );
     }
 }
 
