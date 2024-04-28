@@ -1,3 +1,8 @@
+pub mod systems;
+use bevy::math::DQuat;
+use rapier::na::{Quaternion, UnitQuaternion};
+pub(crate) use systems::*;
+
 mod plugin;
 pub use plugin::*;
 
@@ -16,12 +21,18 @@ pub type Float = rapier::math::Real;
 pub type Vector3 = bevy::math::DVec3;
 pub type RapierVector3 = rapier::math::Vector<Float>;
 
-pub trait VecConvert {
-    fn to_rapier(&self) -> RapierVector3;
-    fn to_bevy(&self) -> Vector3;
+pub trait LibConvert {
+    type RapierType: LibConvert<RapierType = Self::RapierType, BevyType = Self::BevyType>;
+    type BevyType: LibConvert<RapierType = Self::RapierType, BevyType = Self::BevyType>;
+
+    fn to_rapier(&self) -> Self::RapierType;
+    fn to_bevy(&self) -> Self::BevyType;
 }
 
-impl VecConvert for Vector3 {
+impl LibConvert for Vector3 {
+    type RapierType = RapierVector3;
+    type BevyType = Vector3;
+
     fn to_rapier(&self) -> RapierVector3 {
         RapierVector3::new(
             self.x,
@@ -35,7 +46,10 @@ impl VecConvert for Vector3 {
     }
 }
 
-impl VecConvert for RapierVector3 {
+impl LibConvert for RapierVector3 {
+    type RapierType = RapierVector3;
+    type BevyType = Vector3;
+
     fn to_rapier(&self) -> RapierVector3 {
         *self
     }
@@ -45,6 +59,44 @@ impl VecConvert for RapierVector3 {
             self.x,
             self.y,
             self.z,
+        )
+    }
+}
+
+impl LibConvert for DQuat {
+    type RapierType = UnitQuaternion<Float>;
+    type BevyType = DQuat;
+
+    fn to_rapier(&self) -> Self::RapierType {
+        UnitQuaternion::<Float>::new_normalize(Quaternion::from_vector(
+            rapier::na::Vector4::new(
+                self.x,
+                self.y,
+                self.z,
+                self.w,
+            )
+        ))
+    }
+
+    fn to_bevy(&self) -> Self::BevyType {
+        *self
+    }
+}
+
+impl LibConvert for UnitQuaternion<Float> {
+    type RapierType = UnitQuaternion<Float>;
+    type BevyType = DQuat;
+
+    fn to_rapier(&self) -> Self::RapierType {
+        *self
+    }
+
+    fn to_bevy(&self) -> Self::BevyType {
+        DQuat::from_xyzw(
+            self.coords.x,
+            self.coords.y,
+            self.coords.z,
+            self.coords.w,
         )
     }
 }

@@ -1,5 +1,6 @@
 use bevy::prelude::*;
-use rapier::{dynamics::{RigidBodyActivation, RigidBodyBuilder}, geometry::{ColliderBuilder, ColliderMassProps}};
+use doprec::Transform64;
+use rapier::{dynamics::{RigidBodyActivation, RigidBodyBuilder}, geometry::{ColliderBuilder, ColliderMassProps}, na::Translation3};
 
 use crate::*;
 
@@ -9,6 +10,8 @@ pub fn rigid_body_init_system(
 
     new_rigid_body_query: Query<(
         Entity,
+        &Transform64,
+
         &RigidBodyComp,
         &RigidBodyDampingComp,
         &RigidBodySleepingComp,
@@ -22,12 +25,16 @@ pub fn rigid_body_init_system(
 ) {
     for (
         entity,
+        transform,
+
         rigid_body,
         damping, sleeping, velocity, angular_velocity,
 
         collider,
     ) in &new_rigid_body_query {
         let mut rigid_body = RigidBodyBuilder::new(rigid_body.kind);
+        rigid_body.position.translation = Translation3::from(transform.translation.to_rapier());
+        rigid_body.position.rotation = transform.rotation.to_rapier();
         rigid_body.linear_damping = damping.linear;
         rigid_body.angular_damping = damping.angular;
         rigid_body.can_sleep = sleeping.can_sleep;

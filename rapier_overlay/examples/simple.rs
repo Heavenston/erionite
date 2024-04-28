@@ -82,7 +82,7 @@ impl FromWorld for Cam {
     fn from_world(_: &mut World) -> Self {
         Self {
             entity: None,
-            speed: 2.,
+            speed: 10.,
         }
     }
 }
@@ -99,7 +99,7 @@ fn setup_system(
     // Sun's light
     commands.spawn(DirectionalLightBundle {
         cascade_shadow_config: CascadeShadowConfigBuilder {
-            maximum_distance: 1_000_000.,
+            maximum_distance: 1_000.,
             ..default()
         }.build(),
         directional_light: DirectionalLight {
@@ -108,10 +108,55 @@ fn setup_system(
         },
         ..default()
     }).insert(Transform64Bundle {
-        local: Transform64::from_translation(DVec3::new(0., 10., 0.))
+        local: Transform64::from_translation(DVec3::new(10., 10., 0.))
             .looking_at(DVec3::ZERO, DVec3::X),
         ..default()
     });
+
+    // cube stack
+    {
+        let material = materials.add(StandardMaterial {
+            base_color: Color::GOLD,
+            perceptual_roughness: 0.1,
+            metallic: 0.8,
+            ..default()
+        });
+
+        let cube_size = DVec3::splat(1.);
+        let mesh = meshes.add(Cuboid::from_size(cube_size.as_vec3()));
+
+        let origin = DVec3::new(-20., 0.1, 0.);
+
+        let level_max = 22;
+        for level in 0..level_max {
+            let cube_count = level_max - level;
+            let level_start = origin +
+                (cube_size * DVec3::new(0., 0., -0.55)) * cube_count as f64 +
+                (cube_size * DVec3::new(0., 1., 0.)) * level as f64;
+            for x in 0..cube_count {
+                commands.spawn((
+                    PbrBundle {
+                        material: material.clone(),
+                        mesh: mesh.clone(),
+                        ..PbrBundle::default()
+                    },
+                    ColliderBundle::from(ColliderBuilder::cuboid(
+                        cube_size.x / 2.,
+                        cube_size.y / 2.,
+                        cube_size.z / 2.,
+                    )),
+                    RigidBodyBundle::dynamic(),
+                )).insert(Transform64Bundle {
+                    local: Transform64::from_translation(
+                        level_start +
+                        cube_size * 0.5 +
+                        cube_size * DVec3::new(0., 0., 1.1) * x as f64
+                    ),
+                    ..default()
+                });
+            }
+        }
+    }
 
     // Floor
     commands.spawn((
@@ -129,16 +174,25 @@ fn setup_system(
             ),
             ..PbrBundle::default()
         },
-        ColliderBundle::from(ColliderBuilder::halfspace(
-            Unit::new_normalize(DVec3::new(0., 1., 0.).to_rapier())
-        )),
+        ColliderBundle {
+            mass: ColliderMassComp { mass: 0. },
+            ..ColliderBundle::from(ColliderBuilder::cuboid(
+                100., 0.1, 100.
+            ))
+        }
     )).insert(Transform64Bundle::default());
 
-    let cam_pos = DVec3::new(0., 10., 0.);
+    let cam_pos = DVec3::new(0., 3., 0.);
     
     // camera
     camera.entity = Some(commands
-        .spawn(Camera3dBundle::default())
+        .spawn(Camera3dBundle {
+            projection: Projection::Perspective(PerspectiveProjection {
+                fov: 100f32.to_radians(),
+                ..default()
+            }),
+            ..default()
+        })
         .insert(Transform64Bundle {
             local: Transform64::from_translation(cam_pos)
                 .looking_at(DVec3::NEG_X + cam_pos, cam_pos.normalize()),
@@ -192,6 +246,8 @@ fn update_debug_text_system(
     camera: Res<Cam>,
 
     mut debug_text: Query<&mut Text, With<DebugTextComponent>>,
+
+    rigid_bodies: Query<(&RigidBodySleepingComp,)>,
 ) {
     let Some(cam_entity) = camera.entity
     else { return; };
@@ -213,13 +269,23 @@ fn update_debug_text_system(
         }
     }
 
+    let mut rigid_body_count = 0;
+    let mut slepping_body_count = 0;
+    for (sleeping_comp,) in &rigid_bodies {
+        rigid_body_count += 1;
+        if sleeping_comp.sleeping() {
+            slepping_body_count += 1;
+        }
+    }
+
     let cam_pos = cam_transform.translation;
     let cam_speed = camera.speed;
 
     let mut debug_text = debug_text.single_mut();
     debug_text.sections[0].value = format!("\
-{fps:.1} fps - {frame_time:.3} ms/frame \n\
-Camera: speed {cam_speed:.3}, position {cam_pos:.3?} \n\
+{fps:.1} fps - {frame_time:.3} ms/frame\n\
+Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
+Rigid Bodies: {rigid_body_count}, sleeping: {slepping_body_count}\n\
     ");
 }
 
@@ -278,7 +344,7 @@ fn camera_system(
         }
     }
 
-    if kb_input.just_pressed(KeyCode::KeyB) {
+    if mouse_input.just_pressed(MouseButton::Right) {
         let mat = materials.add(StandardMaterial {
             base_color: Color::GRAY,
             perceptual_roughness: 0.8,
@@ -292,8 +358,14 @@ fn camera_system(
                 ).build()),
                 ..PbrBundle::default()
             },
-            ColliderBundle::from(ColliderBuilder::ball(1.)),
-            RigidBodyBundle::dynamic(),
+            ColliderBundle {
+                mass: ColliderMassComp { mass: 5. },
+                ..ColliderBundle::from(ColliderBuilder::ball(1.))
+            },
+            RigidBodyBundle {
+                linvel: VelocityComp::new(camera_trans.forward() * 20.),
+                ..RigidBodyBundle::dynamic()
+            },
         )).insert(Transform64Bundle {
             local: Transform64::from_translation(camera_trans.translation),
             ..default()

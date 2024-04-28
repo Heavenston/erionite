@@ -9,8 +9,6 @@ use rapier::{
 
 #[derive(Resource, Default)]
 pub struct RapierContext {
-    pub integration_parameters: IntegrationParameters,
-    
     pub rigid_body_set: RigidBodySet,
     pub collider_set: ColliderSet,
     pub physics_pipeline: PhysicsPipeline,
