@@ -14,6 +14,7 @@ log = "0.4.21"
 noise = "0.9.0"
 ordered-float = "4.2.0"
 rand = { version = "0.8.5", features = ["small_rng"] }
+rapier_overlay = { version = "0.0.0", path = "../rapier_overlay" }
 rayon = "1.10.0"
 svo = { version = "*", path = "../svo" }
 utils = { version = "*", path = "../utils" }

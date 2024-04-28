@@ -1,5 +1,6 @@
 use bevy::{math::DVec3, prelude::*};
 use doprec::GlobalTransform64;
+use rapier_overlay::*;
 
 const GRAVITY_CONSTANT: f64 = 6.6743;
 
@@ -8,8 +9,8 @@ pub struct GravityPlugin;
 impl Plugin for GravityPlugin {
     fn build(&self, app: &mut App) {
         app
-            .add_systems(Update, (
-                // sync_attractor_masses_with_colliders_system,
+            .add_systems(PreUpdate, (
+                sync_attractor_masses_with_colliders_system,
                 compute_field_system,
                 apply_gravity_to_attracteds_system,
             ).chain());
@@ -33,15 +34,18 @@ pub struct Attractor;
 #[derive(Component, Default)]
 pub struct Attracted;
 
-// fn sync_attractor_masses_with_colliders_system(
-//     mut query: Query<(&ColliderMassProperties, &mut Massive)>,
-// ) {
-//     for (cmp, mut attractor) in &mut query {
-//         let ColliderMassProperties::MassProperties(props) = cmp
-//         else { continue; };
-//         attractor.mass = props.mass as f64;
-//     }
-// }
+fn sync_attractor_masses_with_colliders_system(
+    mut query: Query<(
+        &ColliderMassComp, &mut Massive
+    ), (
+        Changed<ColliderMassComp>,
+    )>,
+) {
+    for (cmp, mut attractor) in &mut query {
+        let &ColliderMassComp { mass } = cmp;
+        attractor.mass = mass;
+    }
+}
 
 fn compute_field_system(
     attractors: Query<(Entity, &GlobalTransform64, &Massive), With<Attractor>>,
@@ -70,5 +74,12 @@ fn compute_field_system(
 }
 
 fn apply_gravity_to_attracteds_system(
-    _victims: Query<(Entity, &GlobalTransform64, &Massive, &GravityFieldSample), With<Attracted>>,
-) { }
+    mut victims: Query<(
+        &Massive, &GravityFieldSample,
+        &mut ExternalForceComp
+    ), With<Attracted>>,
+) {
+    for (mass, gravity_sample, mut external_forces) in &mut victims {
+        external_forces.force = gravity_sample.force * mass.mass;
+    }
+}

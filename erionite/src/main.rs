@@ -12,7 +12,8 @@ mod gravity;
 
 use bevy::{core_pipeline::{bloom::{BloomCompositeMode, BloomSettings}, Skybox}, diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, NotShadowCaster, NotShadowReceiver}, prelude::*, render::mesh::SphereMeshBuilder, window::{CursorGrabMode, PrimaryWindow}};
 use utils::DAabb;
-use doprec::{ DoprecPlugin, FloatingOrigin, Transform64, Transform64Bundle };
+use doprec::*;
+use rapier_overlay::*;
 
 fn setup_logger() -> Result<(), Box<dyn std::error::Error>> {
     use fern::colors::{ ColoredLevelConfig, Color };
@@ -67,12 +68,16 @@ fn main() {
             svo_renderer::SvoRendererPlugin::default(),
             gravity::GravityPlugin,
             DoprecPlugin::default(),
+            RapierPlugin::default(),
         ))
 
         .add_systems(Startup, setup_system)
         .add_systems(Update, (camera_system, update_debug_text_system))
 
         .insert_resource(DirectionalLightShadowMap { size: 2048 })
+        .insert_resource(RapierConfig {
+            gravity: DVec3::ZERO,
+        })
         .init_resource::<Cam>()
         
         .run();

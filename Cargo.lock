@@ -1687,6 +1687,7 @@ dependencies = [
  "noise",
  "ordered-float",
  "rand",
+ "rapier_overlay",
  "rayon",
  "svo",
  "utils",
