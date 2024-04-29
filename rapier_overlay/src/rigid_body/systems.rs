@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use doprec::Transform64;
+use doprec::{GlobalTransform64, Transform64};
 use rapier::{dynamics::{RigidBodyActivation, RigidBodyBuilder}, na::Translation3};
 
 use crate::*;
@@ -10,7 +10,7 @@ pub fn rigid_body_init_system(
 
     new_rigid_body_query: Query<(
         Entity,
-        &Transform64,
+        &GlobalTransform64,
 
         &RigidBodyComp,
         &RigidBodyDampingComp,
@@ -25,19 +25,22 @@ pub fn rigid_body_init_system(
 ) {
     for (
         entity,
-        transform,
+        global_transform,
 
         rigid_body,
         damping, sleeping, velocity, angular_velocity,
 
         collider,
     ) in &new_rigid_body_query {
+        let transform = Transform64::from(*global_transform);
+
         let mut rigid_body = RigidBodyBuilder::new(rigid_body.kind);
         rigid_body.position.translation = Translation3::from(transform.translation.to_rapier());
         rigid_body.position.rotation = transform.rotation.to_rapier();
         rigid_body.linear_damping = damping.linear;
         rigid_body.angular_damping = damping.angular;
         rigid_body.can_sleep = sleeping.can_sleep;
+        rigid_body.sleeping = sleeping.sleeping;
         rigid_body.linvel = velocity.linvel.to_rapier();
         rigid_body.angvel = angular_velocity.angvel.to_rapier();
 
@@ -120,9 +123,9 @@ pub fn rigid_body_update_system(
         Changed<ExternalForceComp>,
     )>,
     transform_changed_query: Query<(
-        Entity, &RigidBodyHandleComp, &Transform64,
+        Entity, &RigidBodyHandleComp, &GlobalTransform64,
     ), (
-        Changed<Transform64>,
+        Changed<GlobalTransform64>,
     )>,
 ) {
     for (handle, comp) in &rigid_body_changed_query {
@@ -189,9 +192,11 @@ pub fn rigid_body_update_system(
 
         if Some(comp) != entities_last_set_transform.get(&entity) {
             entities_last_set_transform.insert(entity, *comp);
-            let tt = comp.translation.to_rapier();
+
+            let trans = Transform64::from(*comp);
+            let tt = trans.translation.to_rapier();
             rigid_body.set_translation(tt, true);
-            let rr = comp.rotation.to_rapier();
+            let rr = trans.rotation.to_rapier();
             rigid_body.set_rotation(rr, true);
         }
     }

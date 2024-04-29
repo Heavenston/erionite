@@ -14,7 +14,7 @@ impl Plugin for RapierPlugin {
             .add_systems(PostStartup, (
                 rigid_body_init_system,
                 collider_init_system,
-            ).chain())
+            ).chain().after(doprec::TransformSystems))
             .add_systems(PostUpdate, (
                 // update before init because there is no need to update a
                 // collider that has just been created
@@ -25,7 +25,7 @@ impl Plugin for RapierPlugin {
                 collider_remove_system,
                 collider_update_system,
                 collider_init_system,
-            ).chain())
+            ).chain().after(doprec::TransformSystems))
             .add_systems(FixedUpdate, (
                 physics_step_system,
                 physics_rapier2bevy_sync_system,

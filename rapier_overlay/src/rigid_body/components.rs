@@ -78,6 +78,13 @@ impl RigidBodySleepingComp {
             ..default()
         }
     }
+
+    pub fn new_sleeping() -> Self {
+        Self {
+            can_sleep: true,
+            sleeping: true,
+        }
+    }
 }
 
 #[derive(getset::CopyGetters, Default, Debug, Component, Clone)]

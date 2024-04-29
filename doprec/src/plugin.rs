@@ -18,7 +18,7 @@ impl Plugin for DoprecPlugin {
                     systems::propagate_transforms64_system,
                     systems::update_on_floating_origin_system,
                 ).chain(),
-            ))
+            ).in_set(systems::TransformSystems))
             .add_systems(PostUpdate, (
                 systems::propagate_transforms_system,
 
@@ -26,6 +26,6 @@ impl Plugin for DoprecPlugin {
                     systems::propagate_transforms64_system,
                     systems::update_on_floating_origin_system,
                 ).chain(),
-            ));
+            ).in_set(systems::TransformSystems));
     }
 }

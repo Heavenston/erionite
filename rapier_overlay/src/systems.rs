@@ -1,5 +1,5 @@
-use bevy::prelude::*;
-use doprec::Transform64;
+use bevy::{math::DVec3, prelude::*};
+use doprec::{GlobalTransform64, Transform64};
 use rapier::dynamics::IntegrationParameters;
 
 use crate::*;
@@ -43,6 +43,8 @@ pub fn physics_step_system(
 pub fn physics_rapier2bevy_sync_system(
     mut context: ResMut<RapierContext>,
 
+    mut globals_transes_query: Query<&mut GlobalTransform64>,
+
     mut rigid_bodies_query: Query<(
         Entity,
         &RigidBodyHandleComp,
@@ -50,13 +52,26 @@ pub fn physics_rapier2bevy_sync_system(
         &mut VelocityComp,
         &mut AngularVelocityComp,
         &mut Transform64,
+
+        Option<&Parent>,
     )>,
 ) {
     let RapierContext { rigid_body_set, entities_last_set_transform, .. }
         = &mut *context;
 
-    for (entity, handle_comp, mut sleeping_comp, mut linvel_comp, mut angvel_comp, mut transform_comp) in rigid_bodies_query.iter_mut() {
+    for (
+        entity, handle_comp, mut sleeping_comp, mut linvel_comp, mut angvel_comp,
+        mut transform_comp, parent_comp,
+    ) in rigid_bodies_query.iter_mut() {
         let Some(rigid_body) = rigid_body_set.get(handle_comp.handle())
+        else { continue; };
+
+        let parent_trans = parent_comp
+            .and_then(|parent| globals_transes_query.get(parent.get()).ok())
+            .map(|&trans| trans)
+            .unwrap_or_default();
+
+        let Ok(mut global_trans_comp) = globals_transes_query.get_mut(entity)
         else { continue; };
 
         if sleeping_comp.sleeping != rigid_body.is_sleeping() {
@@ -64,11 +79,19 @@ pub fn physics_rapier2bevy_sync_system(
         }
 
         if rigid_body.is_moving() {
-            let mut new_transform = *transform_comp;
-            new_transform.rotation = rigid_body.rotation().to_bevy();
-            new_transform.translation = rigid_body.translation().to_bevy();
+            let new_transform = Transform64::from(parent_trans.inverse()) *
+                Transform64 {
+                    translation: rigid_body.translation().to_bevy(),
+                    rotation: rigid_body.rotation().to_bevy(),
+                    scale: DVec3::ONE,
+                };
+            let new_global_transform = parent_trans * new_transform;
+
             if new_transform != *transform_comp {
-                entities_last_set_transform.insert(entity, new_transform);
+                entities_last_set_transform.insert(entity, new_global_transform);
+                // Sets global to avoid thinking it changed when it just wans't synced
+                // yet
+                *global_trans_comp = new_global_transform;
                 *transform_comp = new_transform;
             }
         }

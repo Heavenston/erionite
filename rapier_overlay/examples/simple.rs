@@ -122,7 +122,7 @@ fn setup_system(
             ..default()
         });
 
-        let cube_size = DVec3::splat(1.);
+        let cube_size = DVec3::new(2., 1., 1.);
         let mesh = meshes.add(Cuboid::from_size(cube_size.as_vec3()));
 
         let origin = DVec3::new(-20., 0.1, 0.);
@@ -131,8 +131,8 @@ fn setup_system(
         for level in 0..level_max {
             let cube_count = level_max - level;
             let level_start = origin +
-                (cube_size * DVec3::new(0., 0., -0.55)) * cube_count as f64 +
-                (cube_size * DVec3::new(0., 1., 0.)) * level as f64;
+                (cube_size * DVec3::new(0., 0., -0.75)) * cube_count as f64 +
+                (cube_size * DVec3::new(0., 0.99, 0.)) * level as f64;
             for x in 0..cube_count {
                 commands.spawn((
                     PbrBundle {
@@ -145,12 +145,15 @@ fn setup_system(
                         cube_size.y / 2.,
                         cube_size.z / 2.,
                     )),
-                    RigidBodyBundle::dynamic(),
+                    RigidBodyBundle {
+                        sleeping: RigidBodySleepingComp::new_sleeping(),
+                        ..RigidBodyBundle::dynamic()
+                    }
                 )).insert(Transform64Bundle {
                     local: Transform64::from_translation(
                         level_start +
                         cube_size * 0.5 +
-                        cube_size * DVec3::new(0., 0., 1.1) * x as f64
+                        cube_size * DVec3::new(0., 0., 1.5) * x as f64
                     ),
                     ..default()
                 });
@@ -359,7 +362,7 @@ fn camera_system(
                 ..PbrBundle::default()
             },
             ColliderBundle {
-                mass: ColliderMassComp { mass: 5. },
+                mass: ColliderMassComp { mass: 50. },
                 ..ColliderBundle::from(ColliderBuilder::ball(1.))
             },
             RigidBodyBundle {

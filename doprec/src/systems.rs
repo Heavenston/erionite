@@ -1,6 +1,9 @@
 use bevy::{math::DVec3, prelude::*, utils::HashSet};
 use crate::components::{ GlobalTransform64, Transform64, FloatingOrigin };
 
+#[derive(SystemSet, Debug, Hash, Default, Clone, Copy, PartialEq, Eq)]
+pub struct TransformSystems;
+
 /// Propagate normal transforms for entities without any transform64
 /// This is to make ui nodes still work
 pub fn propagate_transforms_system(

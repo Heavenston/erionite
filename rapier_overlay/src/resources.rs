@@ -1,5 +1,5 @@
 use bevy::{math::DVec3, prelude::*, utils::HashMap};
-use doprec::Transform64;
+use doprec::GlobalTransform64;
 
 use crate::*;
 use rapier::{
@@ -26,7 +26,7 @@ pub struct RapierContext {
     /// used for deletion as bevy forgets the component before we can read it
     pub entities2rigidbodies: HashMap<Entity, RigidBodyHandle>,
 
-    pub entities_last_set_transform: HashMap<Entity, Transform64>,
+    pub entities_last_set_transform: HashMap<Entity, GlobalTransform64>,
 }
 
 impl RapierContext {

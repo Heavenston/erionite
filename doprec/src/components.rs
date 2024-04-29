@@ -156,6 +156,14 @@ impl Transform64 {
     pub fn down(&self) -> DVec3 {
         -self.local_y()
     }
+
+    pub fn inverse(&self) -> Self {
+        Self {
+            translation: -self.translation,
+            rotation: self.rotation.inverse(),
+            scale: 1. / self.scale,
+        }
+    }
 }
 
 impl Mul<DVec3> for Transform64 {
@@ -176,6 +184,13 @@ impl Mul for Transform64 {
             rotation: self.rotation * rhs.rotation,
             scale: self.scale * rhs.scale,
         }
+    }
+}
+
+impl From<GlobalTransform64> for Transform64 {
+    fn from(value: GlobalTransform64) -> Self {
+        let (scale, rotation, translation) = value.0.to_scale_rotation_translation();
+        Transform64 { translation, rotation, scale }
     }
 }
 
@@ -217,6 +232,10 @@ impl GlobalTransform64 {
     pub fn from_scale(scale: DVec3) -> Self {
         Self(DAffine3::from_scale(scale))
     }
+
+    pub fn inverse(&self) -> Self {
+        Self(self.0.inverse())
+    }
 }
 
 impl Mul<DVec3> for GlobalTransform64 {
@@ -241,13 +260,6 @@ impl Mul for GlobalTransform64 {
 
     fn mul(self, rhs: Self) -> Self::Output {
         Self(self.0 * rhs.0)
-    }
-}
-
-impl Into<Transform64> for GlobalTransform64 {
-    fn into(self) -> Transform64 {
-        let (scale, rotation, translation) = self.0.to_scale_rotation_translation();
-        Transform64 { translation, rotation, scale }
     }
 }
 
