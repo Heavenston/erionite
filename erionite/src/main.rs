@@ -10,10 +10,10 @@ use svo_provider::generator_svo_provider;
 pub mod task_runner;
 mod gravity;
 
-use bevy::{core_pipeline::{bloom::{BloomCompositeMode, BloomSettings}, Skybox}, diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, NotShadowCaster, NotShadowReceiver}, prelude::*, render::mesh::SphereMeshBuilder, window::{CursorGrabMode, PrimaryWindow}};
+use bevy::{core_pipeline::{bloom::{BloomCompositeMode, BloomSettings}, Skybox}, diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, NotShadowCaster, NotShadowReceiver}, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, window::{CursorGrabMode, PrimaryWindow}};
 use utils::DAabb;
 use doprec::*;
-use rapier_overlay::*;
+use rapier_overlay::{rapier::geometry::ColliderBuilder, *};
 
 fn setup_logger() -> Result<(), Box<dyn std::error::Error>> {
     use fern::colors::{ ColoredLevelConfig, Color };
@@ -100,7 +100,7 @@ impl FromWorld for Cam {
     fn from_world(_: &mut World) -> Self {
         Self {
             entity: None,
-            speed: 2.,
+            speed: 50.,
             forced_gravity_toggle: false,
             gravity_redirect_enabled: false,
         }
@@ -201,7 +201,7 @@ fn setup_system(
         gravity::Massive {
             mass: (4. / 3.) * std::f64::consts::PI * radius.powi(3),
         },
-        gravity::Attractor,
+        // gravity::Attractor,
     ));
 
     commands.spawn(SvoRendererBundle {
@@ -244,7 +244,7 @@ fn setup_system(
         ).into(),
     }).insert((
         gravity::Massive {
-            mass: (4. / 3.) * std::f64::consts::PI * radius.powi(3),
+            mass: 50_000_000.,
         },
         gravity::Attractor,
     ));
@@ -387,7 +387,7 @@ Camera: speed {cam_speed:.3}, position {cam_pos:.3?} \n\
 }
 
 fn camera_system(
-    // mut commands: Commands,
+    mut commands: Commands,
 
     mut camera_query: Query<(&mut Transform64, &GravityFieldSample)>,
     mut renderers: Query<&mut SvoRendererComponent>,
@@ -401,8 +401,8 @@ fn camera_system(
     mouse_input: Res<ButtonInput<MouseButton>>,
 
     time: Res<Time>,
-    // mut meshes: ResMut<Assets<Mesh>>,
-    // mut materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 
     mut q_windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
@@ -435,31 +435,35 @@ fn camera_system(
         camera.forced_gravity_toggle = !camera.forced_gravity_toggle;
     }
 
-    // if kb_input.just_pressed(KeyCode::KeyB) {
-    //     log::info!("Spawning ball !");
-    //     commands.spawn((
-    //         Transform64Bundle {
-    //             local: Transform64::from_translation(camera_trans.translation),
-    //             ..default()
-    //         },
-    //         VisibilityBundle::default(),
-    //         Collider::ball(1.),
-    //         meshes.add(SphereMeshBuilder::new(1., bevy::render::mesh::SphereKind::Ico {
-    //             subdivisions: 5,
-    //         }).build()),
-    //         materials.add(StandardMaterial {
-    //             perceptual_roughness: 0.8,
-    //             metallic: 0.,
-    //             base_color: Color::rgb(1., 0.5, 0.),
-    //             ..default()
-    //         }),
-    //         ColliderMassProperties::Mass(10.),
-    //         ExternalForce::default(),
-    //         RigidBody::Dynamic,
-    //         gravity::Massive { mass: 50. },
-    //         gravity::Attracted,
-    //     ));
-    // }
+    if kb_input.just_pressed(KeyCode::KeyB) {
+        log::info!("Spawning ball !");
+        let radius = 0.25;
+        let mass = 5.;
+        commands.spawn((
+            Transform64Bundle {
+                local: Transform64::from_translation(camera_trans.translation),
+                ..default()
+            },
+            VisibilityBundle::default(),
+            meshes.add(SphereMeshBuilder::new(radius, SphereKind::Ico {
+                subdivisions: 5,
+            }).build()),
+            materials.add(StandardMaterial {
+                perceptual_roughness: 0.2,
+                metallic: 0.8,
+                base_color: Color::GOLD,
+                ..default()
+            }),
+            ColliderBundle {
+                mass: ColliderMassComp { mass },
+                ..ColliderBundle::from(ColliderBuilder::ball(radius as f64))
+            },
+            RigidBodyBundle::dynamic(),
+            gravity::GravityFieldSample::default(),
+            gravity::Massive::default(),
+            gravity::Attracted,
+        ));
+    }
 
     for mwe in mouse_wheel_events.read() {
         if mwe.y < 0. {
@@ -484,7 +488,7 @@ fn camera_system(
 
     camera.gravity_redirect_enabled =
         !camera.forced_gravity_toggle &&
-        camera_gravity.force.length() > 90_000.;
+        camera_gravity.force.length() > 4.;
     if camera.gravity_redirect_enabled {
         let target_down = camera_gravity.force.normalize();
         let target_down_local = camera_trans.rotation.inverse() * target_down;
