@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use doprec::{GlobalTransform64, Transform64};
 use rapier::geometry::{ColliderBuilder, ColliderMassProps};
 
 use crate::*;
@@ -9,6 +10,7 @@ pub fn collider_init_system(
 
     new_colliders_query: Query<(
         Entity,
+        &GlobalTransform64,
         &ColliderShapeComp,
         &ColliderFrictionComp,
         &ColliderMassComp,
@@ -19,15 +21,22 @@ pub fn collider_init_system(
     )>,
 ) {
     for (
-        entity, shape, friction_comp, mass_comp,
+        entity, global_transform,
+        shape, friction_comp, mass_comp,
 
         rigid_body,
     ) in &new_colliders_query {
-        let collider = ColliderBuilder {
+        let mut collider = ColliderBuilder {
             mass_properties: ColliderMassProps::Mass(mass_comp.mass),
             friction: friction_comp.friction,
             ..ColliderBuilder::new(shape.shape.clone())
-        }.build();
+        };
+
+        if rigid_body.is_none() {
+            let t = Transform64::from(*global_transform);
+            collider.position.translation = t.translation.to_rapier().into();
+            collider.position.rotation = t.rotation.to_rapier();
+        }
 
         let handle = context.collider_set.insert(collider);
         context.entities2colliders.insert(entity, handle);
@@ -35,7 +44,7 @@ pub fn collider_init_system(
         commands.entity(entity).insert(ColliderHandleComp {
             handle,
         });
-
+        
         if let Some(rigid_body) = rigid_body {
             // Partial borrow because we need two mut borrows to context
             let RapierContext { collider_set, rigid_body_set, .. } = &mut *context;
@@ -97,31 +106,31 @@ pub fn collider_update_system(
     )>,
 ) {
     for (handle, shape) in &shape_changed_query {
-        let Some(component) = context.collider_set.get_mut(handle.handle)
+        let Some(collider) = context.collider_set.get_mut(handle.handle)
         else {
             log::warn!("Invalid collider handle");
             continue;
         };
 
-        component.set_shape(shape.shape.clone());
+        collider.set_shape(shape.shape.clone());
     }
     for (handle, friction) in &friction_changed_query {
-        let Some(component) = context.collider_set.get_mut(handle.handle)
+        let Some(collider) = context.collider_set.get_mut(handle.handle)
         else {
             log::warn!("Invalid collider handle");
             continue;
         };
 
-        component.set_friction(friction.friction);
+        collider.set_friction(friction.friction);
     }
     for (handle, mass) in &mass_changed_query {
-        let Some(component) = context.collider_set.get_mut(handle.handle)
+        let Some(collider) = context.collider_set.get_mut(handle.handle)
         else {
             log::warn!("Invalid collider handle");
             continue;
         };
 
-        component.set_mass(mass.mass);
+        collider.set_mass(mass.mass);
     }
 }
 

@@ -183,7 +183,13 @@ fn setup_system(
                 100., 0.1, 100.
             ))
         }
-    )).insert(Transform64Bundle::default());
+    )).insert(Transform64Bundle {
+        local: Transform64 {
+            translation: DVec3::new(0., 1., 0.),
+            ..default()
+        },
+        ..default()
+    });
 
     let cam_pos = DVec3::new(0., 3., 0.);
     
