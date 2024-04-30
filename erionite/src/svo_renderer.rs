@@ -13,9 +13,6 @@ use utils::{AabbExt, DAabb};
 use crate::task_runner::{self, OptionTaskExt, Task};
 use crate::svo_provider::SvoProviderComponent;
 
-// Shim for physics collider
-type Collider = ();
-
 pub struct SvoRendererPlugin {
     
 }
@@ -378,7 +375,7 @@ fn chunk_split_merge_system(
             if mesh.is_some() && !chunk.splited_and_children_are_busy {
                 chunk.mesh_subdivs = 0;
                 chunk.collider_subdivs = 0;
-                commands.entity(chunk_entity).remove::<(Collider, Handle<Mesh>)>();
+                commands.entity(chunk_entity).remove::<(ColliderBundle, Handle<Mesh>)>();
             }
         }
 

@@ -1,5 +1,9 @@
+use std::ops::{Add, Sub};
+
 use bevy_math::{bounding::Aabb3d, DVec3};
 use bevy_render::primitives::Aabb;
+
+use crate::AabbExt;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct DAabb {
@@ -38,6 +42,49 @@ impl DAabb {
 
     pub fn set_max(&mut self, val: impl Into<DVec3>) {
         self.size = val.into() - self.position;
+    }
+
+    pub fn corners(&self) -> [DVec3; 8] {
+        let mut out = [DVec3::ZERO; 8];
+
+        for (i, comp) in (0..0b111u8).enumerate() {
+            let dx = if comp & 0b001 == 0 { 0. } else { 1. };
+            let dy = if comp & 0b010 == 0 { 0. } else { 1. };
+            let dz = if comp & 0b100 == 0 { 0. } else { 1. };
+            out[i] = DVec3::new(
+                self.position.x + self.size.x * dx,
+                self.position.y + self.size.y * dy,
+                self.position.z + self.size.z * dz,
+            );
+        }
+
+        out
+    }
+
+    pub fn translated(self, diff: DVec3) -> Self {
+        Self {
+            position: self.position + diff,
+            ..self
+        }
+    }
+
+    pub fn fully_contained_in_sphere(self, sphere_origin: DVec3, sphere_radius: f64) -> bool {
+        let r2 = sphere_radius.powi(2);
+        return self.translated(-sphere_origin).corners()
+            .into_iter().all(|c| c.length_squared() <= r2);
+    }
+
+    /// Returns true if the aabb is touching, or is inside the sphere
+    pub fn touching_sphere(self, sphere_origin: DVec3, sphere_radius: f64) -> bool {
+        let point = self.closest_point(sphere_origin);
+
+        point.length_squared() <= sphere_radius.powi(2)
+    }
+
+    /// Returns true if the aabb is touching, but not fully inside the sphere
+    pub fn is_touching_sphere_surface(self, sphere_origin: DVec3, sphere_radius: f64) -> bool {
+        self.touching_sphere(sphere_origin, sphere_radius)
+            && (!self.fully_contained_in_sphere(sphere_origin, sphere_radius))
     }
 }
 

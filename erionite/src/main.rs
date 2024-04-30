@@ -173,7 +173,7 @@ fn setup_system(
             min_subdivs: 5,
             chunk_falloff_multiplier: 30.,
             
-            chunk_split_subdivs: 6,
+            chunk_split_subdivs: 5,
             chunk_merge_subdivs: 7,
 
             root_aabb: aabb,
@@ -204,53 +204,8 @@ fn setup_system(
         gravity::Attractor,
     ));
 
-    commands.spawn(SvoRendererBundle {
-        transform: Transform64Bundle {
-            local: Transform64::from_translation(DVec3::new(
-                radius * 4.,
-                0.,
-                0.,
-            )),
-            ..default()
-        },
-        svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
-            max_subdivs: subdivs,
-            min_subdivs: 5,
-            chunk_falloff_multiplier: 30.,
-            
-            chunk_split_subdivs: 5,
-            chunk_merge_subdivs: 6,
-
-            root_aabb: aabb,
-            on_new_chunk: Some(Box::new({
-                let mat = mat.clone();
-                move |mut commands: EntityCommands<'_>| {
-                    commands.insert(mat.clone());
-                }
-            }) as Box<_>),
-
-            ..default()
-        }),
-        svo_provider: generator_svo_provider::GeneratorSvoProvider::new(
-            generator::PlanetGenerator {
-                radius,
-                seed: 2,
-            },
-            // generator::SphereGenerator {
-            //     radius,
-            //     material: svo::TerrainCellKind::Blue,
-            // },
-            aabb,
-        ).into(),
-    }).insert((
-        gravity::Massive {
-            mass: 50_000_000.,
-        },
-        gravity::Attractor,
-    ));
-
     let cam_pos = DVec3::new(
-        radius*4.,
+        0.,
         0.,
         radius+200.
     );

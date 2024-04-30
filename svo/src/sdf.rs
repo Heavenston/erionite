@@ -58,7 +58,10 @@ fn svo_inner<F, HG>(
     where HG: FnMut(&DAabb) -> bool,
           F: FnMut(&DVec3) -> SdfSample,
 {
-    if max_subdiv <= 3 || !has_geometry(&aabb) {
+    if !has_geometry(&aabb) {
+        return svo_full(sample, 1, aabb);
+    }
+    if max_subdiv <= 3 {
         return svo_full(sample, max_subdiv.min(3), aabb);
     }
 

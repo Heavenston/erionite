@@ -1,3 +1,4 @@
+use bevy::math::DVec3;
 use ordered_float::OrderedFloat;
 use rand::prelude::*;
 
@@ -17,6 +18,7 @@ impl Generator for PlanetGenerator {
     ) -> svo::TerrainCell {
         use noise::*;
 
+        let radius = self.radius;
         let aabb = path.get_aabb(root_aabb);
         let mut r = SmallRng::seed_from_u64(self.seed as u64);
 
@@ -62,7 +64,10 @@ impl Generator for PlanetGenerator {
         ).set_scale(1. / 1000.);
 
         let svo = svo::svo_from_sdf(
-            move |_| true,
+            move |aabb| {
+                (!aabb.fully_contained_in_sphere(DVec3::ZERO, radius - 300.)) &&
+                aabb.touching_sphere(DVec3::ZERO, radius + 300.)
+            },
             move |&sp| {
                 let spa = [sp.x, sp.y, sp.z].map(|x| x);
 
