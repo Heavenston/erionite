@@ -199,9 +199,9 @@ fn setup_system(
         ).into(),
     }).insert((
         gravity::Massive {
-            mass: (4. / 3.) * std::f64::consts::PI * radius.powi(3),
+            mass: 50_000_000.,
         },
-        // gravity::Attractor,
+        gravity::Attractor,
     ));
 
     commands.spawn(SvoRendererBundle {

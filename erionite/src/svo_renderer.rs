@@ -129,6 +129,8 @@ pub struct ChunkComponent {
     /// used to know if the chunk is waiting for a subdiv 'assignment'
     waiting_for_subdivs: bool,
 
+    splited_and_children_are_busy: bool,
+
     should_update_data: bool,
     data_subdivs: u32,
     data_task: Option<Task<Arc<svo::TerrainCell>>>,
@@ -150,9 +152,19 @@ impl ChunkComponent {
             renderer,
 
             waiting_for_subdivs: true,
+            splited_and_children_are_busy: true,
 
             ..default()
         }
+    }
+
+    fn set_target_state(&mut self, new_state: ChunkMergeState) {
+        if self.target_state == new_state {
+            return;
+        }
+
+        self.splited_and_children_are_busy = true;
+        self.target_state = new_state;
     }
 
     pub fn is_generating(&self) -> bool {
@@ -173,15 +185,12 @@ impl ChunkComponent {
         }
 
         if self.target_state != ChunkMergeState::Merge {
-            return false;
+            return self.splited_and_children_are_busy;
         }
 
-        self.is_generating() ||
-        self.is_generating_mesh() ||
-        self.is_generating_collider() ||
-        self.should_update_data ||
-        self.should_update_mesh ||
-        self.should_update_collider
+        self.should_update_data || self.is_generating() ||
+        self.should_update_mesh || self.is_generating_mesh() ||
+        self.should_update_collider || self.is_generating_collider()
     }
 }
 
@@ -283,11 +292,11 @@ fn chunks_subdivs_system(
 
         if chunk.target_state == ChunkMergeState::Split &&
             chunk.target_subdivs < options.chunk_merge_subdivs {
-            chunk.target_state = ChunkMergeState::Merge;
+            chunk.set_target_state(ChunkMergeState::Merge);
         }
         if chunk.target_state == ChunkMergeState::Merge &&
             chunk.target_subdivs > options.chunk_split_subdivs {
-            chunk.target_state = ChunkMergeState::Split;
+            chunk.set_target_state(ChunkMergeState::Split);
         }
     }
 }
@@ -360,13 +369,13 @@ fn chunk_split_merge_system(
         if chunk.target_state.is_split() {
             for child in &mut children {
                 if child.target_state == ChunkMergeState::ParentMerging {
-                    child.target_state = ChunkMergeState::Merge;
+                    child.set_target_state(ChunkMergeState::Merge);
                 }
             }
             
-            let can_hide = children.iter().all(|child| !child.is_busy());
+            chunk.splited_and_children_are_busy = children.iter().any(|child| child.is_busy());
 
-            if mesh.is_some() && can_hide {
+            if mesh.is_some() && !chunk.splited_and_children_are_busy {
                 chunk.mesh_subdivs = 0;
                 chunk.collider_subdivs = 0;
                 commands.entity(chunk_entity).remove::<(Collider, Handle<Mesh>)>();
@@ -385,7 +394,7 @@ fn chunk_split_merge_system(
             }
             else {
                 for child in &mut children {
-                    child.target_state = ChunkMergeState::ParentMerging;
+                    child.set_target_state(ChunkMergeState::ParentMerging);
                 }
             }
         }
