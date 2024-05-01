@@ -438,7 +438,7 @@ fn kernel(
     let mut edges = [DVec3::ONE * -1.; 12];
     let mut edges_mats = [Color::WHITE; 12];
     let edges_to_take = EDGE_TABLE[id as usize];
-    (0..u16::BITS).filter(|i| (edges_to_take & (1 << i)) != 0)
+    (0..12).filter(|i| (edges_to_take & (1 << i)) != 0)
         .map(|i| i as usize)
         .for_each(|i| {
             let [ai, bi] = EDGE_TO_VERTEX_TABLE[i]
