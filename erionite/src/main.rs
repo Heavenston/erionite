@@ -456,7 +456,7 @@ fn camera_system(
         let prop = angle / std::f64::consts::PI;
 
         let rot_speed = prop.sqrt() * 5.;
-        let rot_speed = if prop < 0.001 { angle } else { rot_speed * (time.delta_seconds() as f64) };
+        let rot_speed = if prop < 0.001 { angle } else { rot_speed * time.delta_seconds_f64() };
         camera_trans.rotate_local_z((rot_speed * dir).clamp(-angle.abs(), angle.abs()));
     }
 
@@ -473,5 +473,5 @@ fn camera_system(
     if kb_input.pressed(KeyCode::KeyD) {
         movement -= left;
     }
-    camera_trans.translation += movement.normalize_or_zero() * camera.speed * (time.delta_seconds() as f64);
+    camera_trans.translation += movement.normalize_or_zero() * camera.speed * time.delta_seconds_f64();
 }

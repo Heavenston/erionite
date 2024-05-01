@@ -4,7 +4,7 @@ use std::time::Duration;
 use bevy::time::common_conditions::on_timer;
 use doprec::{GlobalTransform64, Transform64, Transform64Bundle};
 use ordered_float::OrderedFloat;
-use bevy::{ecs::system::EntityCommands, prelude::*, render::primitives::Aabb};
+use bevy::{ecs::system::EntityCommands, prelude::*};
 use rapier_overlay::rapier::geometry::{ColliderBuilder, SharedShape};
 use rapier_overlay::{BevyMeshExt, ColliderBundle};
 use svo::{mesh_generation::marching_cubes, CellPath};
