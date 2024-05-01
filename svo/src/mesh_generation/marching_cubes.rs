@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use bevy_math::{bounding::Aabb3d, DVec3, UVec3, Vec3, Vec4};
+use bevy_math::{DVec3, UVec3, Vec3, Vec4};
 use bevy_render::{color::Color, mesh::{self, Mesh}, render_asset::RenderAssetUsages};
 use ordered_float::OrderedFloat;
 use utils::{AabbExt, DAabb};
 
-use crate::{self as svo, CellPath, PackedIndexIterator, TerrainCellKind};
+use crate::{self as svo, CellPath, TerrainCellKind};
 
 const EDGE_TABLE: [u16; 256] = [
 0x0  , 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
@@ -496,10 +496,18 @@ fn run_rec<'a>(
 
     depth: u32,
 ) {
-    let data = root_cell.get_path(path.clone()).into_inner();
+    // let data = root_cell.get_path(path.clone()).into_inner();
 
-    if data.empty && depth > 2 {
-        return;
+    // if data.empty && depth > 2 {
+    //     return;
+    // }
+    {
+        let all_empty = path.clone().neighbors().map(|(_, x)| x)
+            .chain(std::iter::once(path.clone()))
+            .all(|path| root_cell.get_path(path).into_inner().empty);
+        if all_empty {
+            return;
+        }
     }
 
     if depth == 0 {
