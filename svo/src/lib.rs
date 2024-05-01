@@ -299,7 +299,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// Follows the given path, until a leaf or packed cell is reached
     pub fn follow_path(&self, path: &CellPath) -> (CellPath, &Self) {
         let mut path = path.clone();
-        let Some(x) = path.pop()
+        let Some(x) = path.pop_back()
             else { return (CellPath::new(), self); };
 
         match self {
@@ -314,7 +314,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// mut version of [follow_path](Self::follow_path)
     pub fn follow_path_mut(&mut self, path: &CellPath) -> (CellPath, &mut Self) {
         let mut path = path.clone();
-        let Some(x) = path.pop()
+        let Some(x) = path.pop_back()
             else { return (CellPath::new(), self); };
 
         match self {
@@ -331,7 +331,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
         where D: SplittableData
     {
         let mut path = path.clone();
-        let Some(child) = path.pop()
+        let Some(child) = path.pop_back()
             else { return self };
 
         self.to_internal()
@@ -347,7 +347,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
         loop {
             match current {
                 Cell::Internal(i) => {
-                    let Some(comp) = path.pop()
+                    let Some(comp) = path.pop_back()
                     else { return current.data(); };
 
                     current = i.get_child(comp);
@@ -373,7 +373,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
         loop {
             match current {
                 Cell::Internal(i) => {
-                    let Some(comp) = path.pop()
+                    let Some(comp) = path.pop_back()
                     else { return Either::Left(&mut i.data); };
 
                     current = i.get_child_mut(comp);
@@ -432,7 +432,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
         let mut path = path.clone();
         match self {
             Cell::Internal(i) => {
-                if let Some(comp) = path.pop() {
+                if let Some(comp) = path.pop_back() {
                     i.get_child_mut(comp).update_on_path(&path);
                 }
                 i.shallow_update();
@@ -515,7 +515,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
         let mut total = 0;
         match self {
             Cell::Internal(i) => {
-                if let Some(comp) = path.pop() {
+                if let Some(comp) = path.pop_back() {
                     total += i.get_child_mut(comp).simplify_on_path(path);
                 }
             },

@@ -31,6 +31,10 @@ impl CellPath {
         sb
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0 == 1
+    }
+
     #[doc(alias = "depth")]
     pub const fn len(&self) -> u32 {
         return self.mark_bit_position() / 3;
@@ -42,10 +46,9 @@ impl CellPath {
     }
 
     pub fn push(&mut self, v: u3) {
-        assert!(self.capacity() > self.len());
+        assert!(self.len() < Self::MAX_CAPACITY);
 
-        self.0 <<= 3;
-        self.0 |= CellPathInner::from(v.value());
+        self.0 = (self.0 << 3) | CellPathInner::from(v.value());
     }
 
     pub fn with_push(mut self, v: u3) -> Self {
@@ -54,17 +57,15 @@ impl CellPath {
     }
 
     pub fn push_back(&mut self, v: u3) {
-        assert!(self.capacity() > self.len());
-
-        let marker_bit = self.mark_bit_position();
-        // let x = marker_bit - 3;
+        let mbp = self.mark_bit_position();
+        assert!(mbp / 3 < Self::MAX_CAPACITY);
 
         // remove marker bit
-        self.0 &= !(CellPathInner::MAX << marker_bit);
-        // add new val
-        self.0 |= CellPathInner::from(v.value()) << marker_bit;
-        // add new marker bit
-        self.0 |= 1 << marker_bit + 3;
+        self.0 &= !(1 << mbp);
+        // add the value
+        self.0 |= CellPathInner::from(v.value()) << mbp;
+        // add back a new marker bit
+        self.0 |= 1 << (mbp + 3);
     }
 
     pub fn with_push_back(mut self, v: u3) -> Self {
@@ -73,38 +74,47 @@ impl CellPath {
     }
 
     pub fn peek(&self) -> Option<u3> {
-        if self.len() == 0 {
+        if self.is_empty() {
             return None;
         }
 
-        let marker_bit = self.mark_bit_position();
-        Some(u3::new((self.0 >> ((marker_bit - 3) as usize)) as u8))
+        Some(u3::new((self.0 & 0b111) as u8))
     }
 
     pub fn pop(&mut self) -> Option<u3> {
-        let marker_bit = self.mark_bit_position();
-
-        if marker_bit == 0 {
+        if self.is_empty() {
             return None;
         }
 
-        let x = marker_bit - 3;
-        let val = unsafe { u3::new_unchecked(((self.0 >> x) & 0b111) as u8) };
-
-        // remove last bits
-        self.0 &= !(CellPathInner::MAX << x);
-        // add marker bit
-        self.0 |= 1 << x;
-
-        Some(val)
+        let val = self.0 & 0b111;
+        self.0 >>= 3;
+        return Some(u3::new(val as u8));
     }
 
-    pub fn pop_back(&self) -> Option<u3> {
-        let len = self.len() as usize;
-        if len == 0
-        { return None; }
+    pub fn peek_back(&self) -> Option<u3> {
+        if self.is_empty() {
+            return None;
+        }
 
-        Some(u3::new((self.0 >> ((len-1) * 3) & 0b111) as u8))
+        let mbp = self.mark_bit_position();
+        Some(u3::new(((self.0 >> (mbp-3)) & 0b111) as u8))
+    }
+
+    pub fn pop_back(&mut self) -> Option<u3> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let mbp = self.mark_bit_position();
+        let new_mbp = mbp-3;
+        let val = self.0 >> new_mbp;
+
+        // remove marker bit and removed bits
+        self.0 &= (1 << new_mbp) - 1;
+        // but new marker bit
+        self.0 |= 1 << new_mbp;
+
+        Some(u3::new((val & 0b111) as u8))
     }
     
     pub fn parent(&self) -> Option<Self> {
@@ -333,8 +343,10 @@ impl Default for CellPath {
 
 impl std::fmt::Debug for CellPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("CellPath(")?;
-        f.write_str(&format!("{:b}", self.0))?;
+        f.write_str("CellPath(1")?;
+        for comp in self.into_iter() {
+            write!(f, "_{:03b}", comp.value())?;
+        }
         f.write_str(")")?;
 
         Ok(())
@@ -373,7 +385,7 @@ impl Iterator for CellPathIterator {
     type Item = u3;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.path.pop()
+        self.path.pop_back()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -383,7 +395,7 @@ impl Iterator for CellPathIterator {
 }
 impl DoubleEndedIterator for CellPathIterator {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.path.pop_back()
+        self.path.pop()
     }
 }
 impl ExactSizeIterator for CellPathIterator {  }
@@ -393,6 +405,7 @@ impl FusedIterator for CellPathIterator {  }
 mod tests {
     use super::*;
     use bevy_math::dvec3;
+    use itertools::Itertools;
 
     #[test]
     fn test_neighbor() {
@@ -469,58 +482,99 @@ mod tests {
 
     #[test]
     fn test_push() {
-        assert_eq!(
-            CellPath(0b1).with_push(u3::new(0b000)),
-            CellPath(0b1_000)
-        );
-        assert_eq!(
-            CellPath(0b1_000).with_push(u3::new(0b010)),
-            CellPath(0b1_000_010)
-        );
-        assert_eq!(
-            CellPath(0b1_010).with_push(u3::new(0b010)),
-            CellPath(0b1_010_010)
-        );
-        assert_eq!(
-            CellPath(0b1_111).with_push(u3::new(0b010)),
-            CellPath(0b1_111_010)
-        );
-        assert_eq!(
-            CellPath(0b1_111).with_push(u3::new(0b010)),
-            CellPath(0b1_111_010)
-        );
+        let mut path = CellPath(0b1);
+        path.push(u3::new(0b000));
+        assert_eq!(path, CellPath(0b1_000));
+
+        let mut path = CellPath(0b1);
+        path.push(u3::new(0b001));
+        assert_eq!(path, CellPath(0b1_001));
+
+        let mut path = CellPath(0b1);
+        path.push(u3::new(0b010));
+        assert_eq!(path, CellPath(0b1_010));
+
+        let mut path = CellPath(0b1_000);
+        path.push(u3::new(0b010));
+        assert_eq!(path, CellPath(0b1_000_010));
+
+        let mut path = CellPath(0b1_000_000);
+        path.push(u3::new(0b010));
+        assert_eq!(path, CellPath(0b1_000_000_010));
+
+        let mut path = CellPath(0b1_111_111);
+        path.push(u3::new(0b111));
+        assert_eq!(path, CellPath(0b1_111_111_111));
+
+        let mut path = CellPath(0b1_101_011);
+        path.push(u3::new(0b111));
+        assert_eq!(path, CellPath(0b1_101_011_111));
+
+        let mut path = CellPath(0b1_000_000_000_000);
+        path.push(u3::new(0b111));
+        assert_eq!(path, CellPath(0b1_000_000_000_000_111));
+    }
+
+    #[test]
+    fn test_with_push() {
+        let path = CellPath(0b1);
+        assert_eq!(path.with_push(u3::new(0b000)), CellPath(0b1_000));
+
+        let path = CellPath(0b1);
+        assert_eq!(path.with_push(u3::new(0b001)), CellPath(0b1_001));
+
+        let path = CellPath(0b1);
+        assert_eq!(path.with_push(u3::new(0b010)), CellPath(0b1_010));
+
+        let path = CellPath(0b1_000);
+        assert_eq!(path.with_push(u3::new(0b010)), CellPath(0b1_000_010));
+
+        let path = CellPath(0b1_000_000);
+        assert_eq!(path.with_push(u3::new(0b010)), CellPath(0b1_000_000_010));
+
+        let path = CellPath(0b1_111_111);
+        assert_eq!(path.with_push(u3::new(0b111)), CellPath(0b1_111_111_111));
+
+        let path = CellPath(0b1_101_011);
+        assert_eq!(path.with_push(u3::new(0b111)), CellPath(0b1_101_011_111));
+
+        let path = CellPath(0b1_000_000_000_000);
+        assert_eq!(path.with_push(u3::new(0b111)), CellPath(0b1_000_000_000_000_111));
     }
 
     #[test]
     fn test_push_back() {
-        assert_eq!(
-            CellPath(0b1).with_push_back(u3::new(0b000)),
-            CellPath(0b1_000)
-        );
-        assert_eq!(
-            CellPath(0b1_000).with_push_back(u3::new(0b010)),
-            CellPath(0b1_010_000)
-        );
-        assert_eq!(
-            CellPath(0b1_010).with_push_back(u3::new(0b010)),
-            CellPath(0b1_010_010)
-        );
-        assert_eq!(
-            CellPath(0b1_111).with_push_back(u3::new(0b010)),
-            CellPath(0b1_010_111)
-        );
-        assert_eq!(
-            CellPath(0b1_111).with_push_back(u3::new(0b010)),
-            CellPath(0b1_010_111)
-        );
-        assert_eq!(
-            CellPath(0b1_000_111).with_push_back(u3::new(0b010)),
-            CellPath(0b1_010_000_111)
-        );
-        assert_eq!(
-            CellPath(0b1_010_000_111).with_push_back(u3::new(0b000)),
-            CellPath(0b1_000_010_000_111)
-        );
+        let mut path = CellPath(0b1);
+        path.push_back(u3::new(0b000));
+        assert_eq!(path, CellPath(0b1_000));
+
+        let mut path = CellPath(0b1);
+        path.push_back(u3::new(0b001));
+        assert_eq!(path, CellPath(0b1_001));
+
+        let mut path = CellPath(0b1);
+        path.push_back(u3::new(0b010));
+        assert_eq!(path, CellPath(0b1_010));
+
+        let mut path = CellPath(0b1_000);
+        path.push_back(u3::new(0b010));
+        assert_eq!(path, CellPath(0b1_010_000));
+
+        let mut path = CellPath(0b1_000_000);
+        path.push_back(u3::new(0b010));
+        assert_eq!(path, CellPath(0b1_010_000_000));
+
+        let mut path = CellPath(0b1_111_111);
+        path.push_back(u3::new(0b111));
+        assert_eq!(path, CellPath(0b1_111_111_111));
+
+        let mut path = CellPath(0b1_101_011);
+        path.push_back(u3::new(0b111));
+        assert_eq!(path, CellPath(0b1_111_101_011));
+
+        let mut path = CellPath(0b1_000_000_000_000);
+        path.push_back(u3::new(0b111));
+        assert_eq!(path, CellPath(0b1_111_000_000_000_000));
     }
 
     #[test]
@@ -529,57 +583,68 @@ mod tests {
         assert_eq!(path.pop(), None);
         assert_eq!(path, CellPath(0b1));
 
-        path = CellPath(0b1_000);
+        let mut path = CellPath(0b1_000);
         assert_eq!(path.pop(), Some(u3::new(0b000)));
         assert_eq!(path, CellPath(0b1));
 
-        path = CellPath(0b1_000_010);
-        assert_eq!(path.pop(), Some(u3::new(0b000)));
-        assert_eq!(path, CellPath(0b1_010));
-
-        path = CellPath(0b1_010_010);
+        let mut path = CellPath(0b1_010);
         assert_eq!(path.pop(), Some(u3::new(0b010)));
-        assert_eq!(path, CellPath(0b1_010));
+        assert_eq!(path, CellPath(0b1));
 
-        path = CellPath(0b1_111_010);
-        assert_eq!(path.pop(), Some(u3::new(0b111)));
-        assert_eq!(path, CellPath(0b1_010));
+        let mut path = CellPath(0b1_110);
+        assert_eq!(path.pop(), Some(u3::new(0b110)));
+        assert_eq!(path, CellPath(0b1));
 
-        path = CellPath(0b1_111_110);
-        assert_eq!(path.pop(), Some(u3::new(0b111)));
-        assert_eq!(path, CellPath(0b1_110));
-
-        path = CellPath(0b1_000_111_110);
+        let mut path = CellPath(0b1_000_000);
         assert_eq!(path.pop(), Some(u3::new(0b000)));
-        assert_eq!(path, CellPath(0b1_111_110));
+        assert_eq!(path, CellPath(0b1_000));
 
-        path = CellPath(0b1_000_101_001);
+        let mut path = CellPath(0b1_000_111);
+        assert_eq!(path.pop(), Some(u3::new(0b111)));
+        assert_eq!(path, CellPath(0b1_000));
+
+        let mut path = CellPath(0b1_001_101);
+        assert_eq!(path.pop(), Some(u3::new(0b101)));
+        assert_eq!(path, CellPath(0b1_001));
+
+        let mut path = CellPath(0b1_001_101_000_000);
         assert_eq!(path.pop(), Some(u3::new(0b000)));
-        assert_eq!(path, CellPath(0b1_101_001));
+        assert_eq!(path, CellPath(0b1_001_101_000));
     }
 
     #[test]
     fn test_pop_back() {
-        let path = CellPath(0b1);
+        let mut path = CellPath(0b1);
         assert_eq!(path.pop_back(), None);
+        assert_eq!(path, CellPath(0b1));
 
-        let path = CellPath(0b1_000);
+        let mut path = CellPath(0b1_000);
         assert_eq!(path.pop_back(), Some(u3::new(0b000)));
+        assert_eq!(path, CellPath(0b1));
 
-        let path = CellPath(0b1_000_010);
-        assert_eq!(path.pop_back(), Some(u3::new(0b000)));
-
-        let path = CellPath(0b1_010_110);
+        let mut path = CellPath(0b1_010);
         assert_eq!(path.pop_back(), Some(u3::new(0b010)));
+        assert_eq!(path, CellPath(0b1));
 
-        let path = CellPath(0b1_111_010);
-        assert_eq!(path.pop_back(), Some(u3::new(0b111)));
+        let mut path = CellPath(0b1_110);
+        assert_eq!(path.pop_back(), Some(u3::new(0b110)));
+        assert_eq!(path, CellPath(0b1));
 
-        let path = CellPath(0b1_111_010);
-        assert_eq!(path.pop_back(), Some(u3::new(0b111)));
-
-        let path = CellPath(0b1_000_011_111_010);
+        let mut path = CellPath(0b1_000_000);
         assert_eq!(path.pop_back(), Some(u3::new(0b000)));
+        assert_eq!(path, CellPath(0b1_000));
+
+        let mut path = CellPath(0b1_000_111);
+        assert_eq!(path.pop_back(), Some(u3::new(0b000)));
+        assert_eq!(path, CellPath(0b1_111));
+
+        let mut path = CellPath(0b1_001_101);
+        assert_eq!(path.pop_back(), Some(u3::new(0b001)));
+        assert_eq!(path, CellPath(0b1_101));
+
+        let mut path = CellPath(0b1_001_101_000_000);
+        assert_eq!(path.pop_back(), Some(u3::new(0b001)));
+        assert_eq!(path, CellPath(0b1_101_000_000));
     }
 
     #[test]
@@ -626,6 +691,80 @@ mod tests {
         assert_eq!(
             CellPath(0b1_000_111).get_aabb(aabb),
             DAabb::from_minmax(dvec3(6., 6., 6.), dvec3(12., 12., 12.))
+        );
+    }
+
+    #[test]
+    fn test_iterator() {
+        assert_eq!(
+            CellPath(0b1).into_iter().collect_vec(),
+            vec![],
+        );
+        assert_eq!(
+            CellPath(0b1_000).into_iter().collect_vec(),
+            vec![u3::new(0b000)],
+        );
+        assert_eq!(
+            CellPath(0b1_101).into_iter().collect_vec(),
+            vec![u3::new(0b101)],
+        );
+        assert_eq!(
+            CellPath(0b1_101_000_010).into_iter().collect_vec(),
+            vec![u3::new(0b101), u3::new(0b000), u3::new(0b010)],
+        );
+        assert_eq!(
+            CellPath(0b1_101_111_010).into_iter().collect_vec(),
+            vec![u3::new(0b101), u3::new(0b111), u3::new(0b010)],
+        );
+        assert_eq!(
+            CellPath(0b1_101_111_010_000_000_101_111_001).into_iter().collect_vec(),
+            vec![
+                u3::new(0b101),
+                u3::new(0b111),
+                u3::new(0b010),
+                u3::new(0b000),
+                u3::new(0b000),
+                u3::new(0b101),
+                u3::new(0b111),
+                u3::new(0b001),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_iterator_rev() {
+        assert_eq!(
+            CellPath(0b1).into_iter().rev().collect_vec(),
+            vec![],
+        );
+        assert_eq!(
+            CellPath(0b1_000).into_iter().rev().collect_vec(),
+            vec![u3::new(0b000)],
+        );
+        assert_eq!(
+            CellPath(0b1_101).into_iter().rev().collect_vec(),
+            vec![u3::new(0b101)],
+        );
+        assert_eq!(
+            CellPath(0b1_101_000_010).into_iter().rev().collect_vec(),
+            vec![u3::new(0b010), u3::new(0b000), u3::new(0b101)],
+        );
+        assert_eq!(
+            CellPath(0b1_101_111_010).into_iter().rev().collect_vec(),
+            vec![u3::new(0b010), u3::new(0b111), u3::new(0b101)],
+        );
+        assert_eq!(
+            CellPath(0b1_101_111_010_000_000_101_111_001).into_iter().rev().collect_vec(),
+            vec![
+                u3::new(0b001),
+                u3::new(0b111),
+                u3::new(0b101),
+                u3::new(0b000),
+                u3::new(0b000),
+                u3::new(0b010),
+                u3::new(0b111),
+                u3::new(0b101),
+            ],
         );
     }
 }
