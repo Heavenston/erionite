@@ -122,6 +122,8 @@ fn setup_system(
     let aabb_size = 2f64.powi((subdivs-2) as i32);
     let radius = aabb_size / 4.;
     let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(aabb_size));
+    let volume = (radius.powi(3) * std::f64::consts::PI * 4.) / 3.;
+    let mass = volume / 1_000_000.;
 
     log::info!("AABB Size: {aabb_size}");
     log::info!("Planet radius: {radius}");
@@ -199,7 +201,7 @@ fn setup_system(
         ).into(),
     }).insert((
         gravity::Massive {
-            mass: 50_000_000.,
+            mass,
         },
         gravity::Attractor,
     ));
