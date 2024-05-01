@@ -172,11 +172,11 @@ fn setup_system(
         transform: Transform64Bundle::default(),
         svo_render: SvoRendererComponent::new(SvoRendererComponentOptions {
             max_subdivs: subdivs,
-            min_subdivs: 5,
+            min_subdivs: 4,
             chunk_falloff_multiplier: 30.,
             
-            chunk_split_subdivs: 5,
-            chunk_merge_subdivs: 7,
+            chunk_split_subdivs: 6,
+            chunk_merge_subdivs: 5,
 
             root_aabb: aabb,
             on_new_chunk: Some(Box::new({

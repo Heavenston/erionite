@@ -6,7 +6,7 @@ use doprec::{GlobalTransform64, Transform64, Transform64Bundle};
 use ordered_float::OrderedFloat;
 use bevy::{ecs::system::EntityCommands, prelude::*};
 use rapier_overlay::rapier::geometry::{ColliderBuilder, SharedShape};
-use rapier_overlay::{BevyMeshExt, ColliderBundle};
+use rapier_overlay::{BevyMeshExt, ColliderBundle, ColliderHandleComp};
 use svo::{mesh_generation::marching_cubes, CellPath};
 use utils::{AabbExt, DAabb};
 
@@ -77,6 +77,7 @@ pub struct SvoRendererComponent {
 
 impl SvoRendererComponent {
     pub fn new(options: SvoRendererComponentOptions) -> Self {
+        assert!(options.chunk_split_subdivs >= options.chunk_merge_subdivs);
         Self {
             options,
 
@@ -87,10 +88,16 @@ impl SvoRendererComponent {
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 enum ChunkMergeState {
+    /// Should sets its children to ParentMerging and delete them as soon as
+    /// we have a Mesh and Collider
     #[default]
     Merge,
+    /// Should have children and hide its mesh and collider when they have one
+    /// themselfs
     Split,
 
+    /// Set by the parent on its children when its merging to prevent
+    /// the child of making expansive computation just before being deleted
     ParentMerging,
 }
 
@@ -104,8 +111,34 @@ impl ChunkMergeState {
     }
 }
 
-#[derive(derivative::Derivative, Component, Debug)]
-#[derivative(Default)]
+#[derive(Debug, Clone, Copy, Default)]
+struct GeneratedData<T> {
+    for_subdivs: u32,
+    data: T,
+}
+
+impl<T> GeneratedData<T> {
+    pub fn map<U, F>(self, f: F) -> GeneratedData<U>
+        where F: FnOnce(T) -> U
+    {
+        GeneratedData {
+            for_subdivs: self.for_subdivs,
+            data: f(self.data),
+        }
+    }
+}
+
+impl<T> GeneratedData<Option<T>> {
+    pub fn transpose(self) -> Option<GeneratedData<T>> {
+        match self.data {
+            Some(data) => Some(GeneratedData { data, for_subdivs: self.for_subdivs }),
+            None => None,
+        }
+    }
+}
+
+#[derive(derivative::Derivative, Component)]
+#[derivative(Default, Debug)]
 pub struct ChunkComponent {
     path: svo::CellPath,
     target_subdivs: u32,
@@ -126,20 +159,24 @@ pub struct ChunkComponent {
     /// used to know if the chunk is waiting for a subdiv 'assignment'
     waiting_for_subdivs: bool,
 
-    splited_and_children_are_busy: bool,
+    /// Wether or not all children have a mesh attached (or their own children do)
+    children_have_meshes: bool,
+    /// Like [Self::children_have_meshes] but for colliders
+    children_have_colliders: bool,
 
     should_update_data: bool,
-    data_subdivs: u32,
-    data_task: Option<Task<Arc<svo::TerrainCell>>>,
-    data: Option<Arc<svo::TerrainCell>>,
+    data_task: Option<Task<GeneratedData<Arc<svo::TerrainCell>>>>,
+    data: Option<GeneratedData<Arc<svo::TerrainCell>>>,
 
     should_update_mesh: bool,
-    mesh_subdivs: u32,
-    mesh_task: Option<Task<Option<Mesh>>>,
+    mesh_task: Option<Task<GeneratedData<Option<Mesh>>>>,
+    /// Must be in sync with the `Handle<Mesh>` component on the chunk's entity
+    mesh: Option<GeneratedData<Option<Handle<Mesh>>>>,
 
     should_update_collider: bool,
-    collider_subdivs: u32,
-    collider_task: Option<Task<Option<ColliderBundle>>>,
+    collider_task: Option<Task<GeneratedData<Option<ColliderBundle>>>>,
+    /// Must be in sync with the ColliderBundle's components on the chunk's entity
+    collider: Option<GeneratedData<Option<ColliderBundle>>>,
 }
 
 impl ChunkComponent {
@@ -149,7 +186,9 @@ impl ChunkComponent {
             renderer,
 
             waiting_for_subdivs: true,
-            splited_and_children_are_busy: true,
+
+            children_have_meshes: false,
+            children_have_colliders: false,
 
             ..default()
         }
@@ -160,7 +199,11 @@ impl ChunkComponent {
             return;
         }
 
-        self.splited_and_children_are_busy = true;
+        // Conservative values before it gets recomputed by (at the time of writing this)
+        // the chunk_split_merge_system
+        self.children_have_meshes = false;
+        self.children_have_colliders = false;
+
         self.target_state = new_state;
     }
 
@@ -181,13 +224,16 @@ impl ChunkComponent {
             return true;
         }
 
-        if self.target_state != ChunkMergeState::Merge {
-            return self.splited_and_children_are_busy;
+        match self.target_state {
+            ChunkMergeState::Merge => {
+                self.should_update_data || self.is_generating() ||
+                self.should_update_mesh || self.is_generating_mesh() ||
+                self.should_update_collider || self.is_generating_collider()
+            },
+            ChunkMergeState::Split | ChunkMergeState::ParentMerging => {
+                false
+            },
         }
-
-        self.should_update_data || self.is_generating() ||
-        self.should_update_mesh || self.is_generating_mesh() ||
-        self.should_update_collider || self.is_generating_collider()
     }
 }
 
@@ -287,11 +333,12 @@ fn chunks_subdivs_system(
             chunk.target_subdivs = subdivs;
         }
 
-        if chunk.target_state == ChunkMergeState::Split &&
+        let old_state = chunk.target_state;
+        if old_state == ChunkMergeState::Split &&
             chunk.target_subdivs < options.chunk_merge_subdivs {
             chunk.set_target_state(ChunkMergeState::Merge);
         }
-        if chunk.target_state == ChunkMergeState::Merge &&
+        if old_state == ChunkMergeState::Merge &&
             chunk.target_subdivs > options.chunk_split_subdivs {
             chunk.set_target_state(ChunkMergeState::Split);
         }
@@ -302,13 +349,13 @@ fn chunk_split_merge_system(
     mut commands: Commands,
     mut chunk_entities: Query<Entity, (With<ChunkComponent>, With<Visibility>)>,
     mut chunks: Query<&mut ChunkComponent>,
-    mut chunk_complementaries: Query<Option<&Handle<Mesh>>>,
+    chunk_complementaries: Query<(Option<&Handle<Mesh>>, Option<&ColliderHandleComp>)>,
     mut svo_renders: Query<&mut SvoRendererComponent>,
 ) {
     'chunks_iter: for chunk_entity in &mut chunk_entities {
         let mut chunk = chunks.get_mut(chunk_entity).expect("Query is filtered");
-        let mesh = chunk_complementaries
-            .get_mut(chunk_entity).expect("Query is filtered");
+        let (chunk_mesh, chunk_collider) = chunk_complementaries
+            .get(chunk_entity).expect("Query is filtered");
 
         let Ok(mut renderer) =
             svo_renders.get_mut(chunk.renderer)
@@ -352,12 +399,11 @@ fn chunk_split_merge_system(
 
         // weird trick to get access to both children and chunk
         let children = if let Some(children_entities) = chunk.chunk_children {
-            let [chunk_, children_ @ ..] = chunks.get_many_mut::<9>(utils::join_arrays(
-                [chunk_entity],
-                children_entities,
-            ).into()).expect("All children and chunks should exist");
-            chunk = chunk_;
-            Some(children_)
+            let [reborrowed_chunk, reborrowed_children @ ..] = chunks.get_many_mut::<9>(
+                utils::join_arrays([chunk_entity], children_entities).into()
+            ).expect("All children and chunks should exist");
+            chunk = reborrowed_chunk;
+            Some(reborrowed_children)
         }
         else {
             None
@@ -375,13 +421,21 @@ fn chunk_split_merge_system(
                     child.set_target_state(ChunkMergeState::Merge);
                 }
             }
-            
-            chunk.splited_and_children_are_busy = children.iter().any(|child| child.is_busy());
 
-            if mesh.is_some() && !chunk.splited_and_children_are_busy {
-                chunk.mesh_subdivs = 0;
-                chunk.collider_subdivs = 0;
-                commands.entity(chunk_entity).remove::<(ColliderBundle, Handle<Mesh>)>();
+            chunk.children_have_meshes = children.iter()
+                .all(|chunk| chunk.mesh.is_some() || chunk.children_have_meshes);
+            
+            if chunk_mesh.is_some() && chunk.children_have_meshes {
+                chunk.mesh = None;
+                commands.entity(chunk_entity).remove::<Handle<Mesh>>();
+            }
+
+            chunk.children_have_colliders = children.iter()
+                .all(|chunk| chunk.collider.is_some() || chunk.children_have_colliders);
+
+            if chunk_collider.is_some() && chunk.children_have_colliders {
+                chunk.collider = None;
+                commands.entity(chunk_entity).remove::<ColliderBundle>();
             }
         }
 
@@ -409,18 +463,15 @@ fn chunk_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
 
-    mut chunks: Query<(Entity, &mut ChunkComponent, Option<&Handle<Mesh>>)>,
+    mut chunks: Query<(Entity, &mut ChunkComponent)>,
     mut svo_renders: Query<(&mut SvoRendererComponent, &mut SvoProviderComponent)>,
 ) {
-    for (chunk_entitiy, mut chunk, mesh) in chunks.iter_mut() {
+    for (chunk_entitiy, mut chunk) in chunks.iter_mut() {
         let Ok((renderer, mut provider)) = svo_renders.get_mut(chunk.renderer)
         else { continue; };
 
         let actual_subdivs = renderer.options.chunk_split_subdivs
             .min(chunk.target_subdivs);
-        // If the mesh is changed during this system this variable is updated
-        // as the actual entitie's component isn't updated until next run
-        let mut current_mesh = mesh.cloned();
 
         if chunk.target_state.is_merge() && chunk.should_update_data {
             chunk.should_update_data = false;
@@ -428,8 +479,10 @@ fn chunk_system(
             chunk.data_task = Some(provider.request_chunk(
                 &chunk.path,
                 actual_subdivs
-            ));
-            chunk.data_subdivs = actual_subdivs;
+            ).then_task(move |c| {
+                let t = Arc::clone(c);
+                GeneratedData { for_subdivs: actual_subdivs, data: t }
+            }));
         }
 
         if let Some(data) = chunk.data_task.take_if_finished() {
@@ -437,11 +490,12 @@ fn chunk_system(
             chunk.should_update_mesh = true;
         }
 
-        if let Some(data) = (chunk.target_state.is_merge() && chunk.should_update_mesh)
+        if let Some(GeneratedData {
+            for_subdivs: subdivs, data
+        }) = (chunk.target_state.is_merge() && chunk.should_update_mesh)
             .then_some(&chunk.data).cloned().flatten()
         {
             chunk.should_update_mesh = false;
-            chunk.mesh_subdivs = chunk.data_subdivs;
 
             let chunkpath = chunk.path.clone();
             let root_aabb = renderer.options.root_aabb
@@ -449,7 +503,6 @@ fn chunk_system(
                     chunkpath.get_aabb(renderer.options.root_aabb).min() -
                         renderer.options.root_aabb.min()
                 );
-            let subdivs = actual_subdivs;
             chunk.mesh_task = Some(task_runner::spawn(move || {
                 let mut out = marching_cubes::Out::new(true, false);
                 marching_cubes::run(
@@ -457,46 +510,66 @@ fn chunk_system(
                 );
 
                 if out.vertices.len() == 0 {
-                    return None;
+                    return GeneratedData {
+                        for_subdivs: subdivs,
+                        data: None,
+                    };
                 }
                 
                 let m = out.into_mesh();
 
-                Some(m)
+                GeneratedData {
+                    for_subdivs: subdivs,
+                    data: Some(m),
+                }
             }));
         }
 
         if let Some(maybe_new_mesh) = chunk.mesh_task.take_if_finished() {
-            if let Some(new_mesh) = maybe_new_mesh {
-                let new_mesh = meshes.add(new_mesh);
+            let maybe_new_mesh = maybe_new_mesh.map(|m| m.map(|mesh| meshes.add(mesh)));
+            if let Some(new_mesh) = &maybe_new_mesh.data {
                 commands.entity(chunk_entitiy).insert(new_mesh.clone());
-                current_mesh = Some(new_mesh);
                 
                 chunk.should_update_collider = true;
             }
             else {
                 commands.entity(chunk_entitiy).remove::<Handle<Mesh>>();
             }
+            chunk.mesh = Some(maybe_new_mesh);
         }
 
-        if let Some(mesh_for_collider) = (chunk.target_state.is_merge() && chunk.should_update_collider)
-            .then_some(current_mesh).flatten()
-            .and_then(|handle| meshes.get(handle)).cloned()
+        if let Some(mesh_for_collider) = (
+            chunk.target_state.is_merge() && chunk.should_update_collider
+        )
+            .then_some(chunk.mesh.clone())
+            .flatten()
+            .and_then(|g| g.map(|handle| handle.map(|handle| {
+                meshes.get(handle).cloned()
+            })).transpose())
         {
             chunk.should_update_collider = false;
-            chunk.collider_subdivs = chunk.data_subdivs;
 
             chunk.collider_task = Some(task_runner::spawn(move || {
-                let trimesh = mesh_for_collider.to_trimesh()?;
+                let data = 'data: {
+                    let Some(mesh) = mesh_for_collider.data
+                    else { break 'data None };
+                    let Some(trimesh) = mesh.to_trimesh()
+                    else { break 'data None };
 
-                Some(ColliderBundle::from(ColliderBuilder::new(SharedShape::new(
-                    trimesh
-                ))))
+                    Some(ColliderBundle::from(ColliderBuilder::new(SharedShape::new(
+                        trimesh
+                    ))))
+                };
+                GeneratedData {
+                    for_subdivs: mesh_for_collider.for_subdivs,
+                    data,
+                }
             }));
         }
 
         if let Some(maybe_collider) = chunk.collider_task.take_if_finished() {
-            if let Some(collider) = maybe_collider {
+            chunk.collider = Some(maybe_collider.clone());
+            if let Some(collider) = maybe_collider.data {
                 commands.entity(chunk_entitiy).insert(collider);
             }
             else {
