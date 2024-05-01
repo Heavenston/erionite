@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bevy::time::common_conditions::on_timer;
-use doprec::{GlobalTransform64, Transform64Bundle};
+use doprec::{GlobalTransform64, Transform64, Transform64Bundle};
 use ordered_float::OrderedFloat;
 use bevy::{ecs::system::EntityCommands, prelude::*, render::primitives::Aabb};
 use rapier_overlay::rapier::geometry::{ColliderBuilder, SharedShape};
@@ -318,14 +318,20 @@ fn chunk_split_merge_system(
         };
         let options = &mut renderer.options;
 
+        let chunk_aabb = chunk.path.get_aabb(options.root_aabb);
+
         // must split
         if chunk.chunk_children.is_none() && chunk.target_state.is_split() {
             let n_children = CellPath::components().map(|child| {
                 let child_path = chunk.path.clone().with_push(child);
+                let child_aabb = child_path.get_aabb(options.root_aabb);
 
                 let child_chunk_entitiy = commands.spawn((
                     ChunkComponent::new(chunk.renderer, child_path.clone()),
-                    Transform64Bundle::default(),
+                    Transform64Bundle {
+                        local: Transform64::from_translation(chunk_aabb.min() - child_aabb.min()),
+                        ..default()
+                    },
                     VisibilityBundle::default(),
                     // Into::<Aabb>::into(child_path.get_aabb(options.root_aabb)),
                 )).set_parent(chunk_entity).id();
@@ -438,7 +444,11 @@ fn chunk_system(
             chunk.mesh_subdivs = chunk.data_subdivs;
 
             let chunkpath = chunk.path.clone();
-            let root_aabb = renderer.options.root_aabb;
+            let root_aabb = renderer.options.root_aabb
+                .translated(
+                    chunkpath.get_aabb(renderer.options.root_aabb).min() -
+                        renderer.options.root_aabb.min()
+                );
             let subdivs = actual_subdivs;
             chunk.mesh_task = Some(task_runner::spawn(move || {
                 let mut out = marching_cubes::Out::new(true, false);
