@@ -26,11 +26,23 @@ impl TerrainCellKind {
             TerrainCellKind::Blue => Color::rgb(0.1059, 0.2570, 0.5451),
         }
     }
+
+    pub fn empty(&self) -> bool {
+        match self {
+            TerrainCellKind::Invalid => true,
+            TerrainCellKind::Air => true,
+            _ => false,
+        }
+    }
 }
 
 impl Into<TerrainLeafCell> for TerrainCellKind {
     fn into(self) -> TerrainLeafCell {
-        LeafCell::new(TerrainCellData { kind: self, distance: f16::ZERO })
+        LeafCell::new(TerrainCellData {
+            kind: self,
+            distance: f16::ZERO,
+            empty: self.empty(),
+        })
     }
 }
 
@@ -43,7 +55,11 @@ impl Into<TerrainCell> for TerrainCellKind {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 pub struct TerrainCellData {
     pub kind: TerrainCellKind,
+    /// The only important disances for marching cube are those close to 0
+    /// so f16 precision is sufficient
     pub distance: f16,
+    /// Wether any children or self has any non-air terrain
+    pub empty: bool,
 }
 
 impl TerrainCellData {
@@ -81,7 +97,10 @@ impl SplittableData for TerrainCellData {
 
 impl AggregateData for TerrainCellData {
     fn aggregate<'a>(d: [EitherDataRef<Self>; 8]) -> Self {
-        *d[0].into_inner()
+        Self {
+            empty: d.iter().all(|d| d.empty),
+            ..*d[0].into_inner()   
+        }
     }
 }
 

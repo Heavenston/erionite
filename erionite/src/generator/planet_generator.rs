@@ -115,6 +115,8 @@ impl Generator for PlanetGenerator {
 
         // let rs = svo.simplify();
         // log::trace!("Simplified svo: {rs}");
+        let mut svo = svo;
+        svo.update_all();
         svo
     }
 }

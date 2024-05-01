@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use bevy_math::{bounding::Aabb3d, UVec3, Vec3, Vec4};
+use bevy_math::{bounding::Aabb3d, DVec3, UVec3, Vec3, Vec4};
 use bevy_render::{color::Color, mesh::{self, Mesh}, render_asset::RenderAssetUsages};
 use ordered_float::OrderedFloat;
-use utils::AabbExt as _;
+use utils::{AabbExt, DAabb};
 
 use crate::{self as svo, CellPath, PackedIndexIterator, TerrainCellKind};
 
@@ -383,11 +383,12 @@ impl<'a> State<'a> {
         self.color = color;
     }
 
-    pub fn set_normal(&mut self, normal: Vec3) {
-        self.normal = normal;
+    pub fn set_normal(&mut self, normal: DVec3) {
+        self.normal = normal.as_vec3();
     }
 
-    pub fn add_vertex(&mut self, pos: Vec3) {
+    pub fn add_vertex(&mut self, pos: DVec3) {
+        let pos = pos.as_vec3();
         if self.out.indexed && self.out.smooth {
             let key = (
                 [pos.x, pos.y, pos.z].map(OrderedFloat),
@@ -427,14 +428,14 @@ impl<'a> State<'a> {
 
 fn kernel(
     state: &mut State,
-    samples: [(f32, TerrainCellKind); 8],
-    vertices: [Vec3; 8]
+    vertices_samples: [(f64, TerrainCellKind); 8],
+    vertices_positions: [DVec3; 8]
 ) {
-    let id = samples.iter().rev().fold(0u8, |id, (_, k)| {
+    let id = vertices_samples.iter().rev().fold(0u8, |id, (_, k)| {
         (id << 1) | if *k == TerrainCellKind::Air || *k == TerrainCellKind::Invalid { 0 } else { 1 }
     });
 
-    let mut edges = [Vec3::ONE * -1.; 12];
+    let mut edges = [DVec3::ONE * -1.; 12];
     let mut edges_mats = [Color::WHITE; 12];
     let edges_to_take = EDGE_TABLE[id as usize];
     (0..u16::BITS).filter(|i| (edges_to_take & (1 << i)) != 0)
@@ -442,8 +443,8 @@ fn kernel(
         .for_each(|i| {
             let [ai, bi] = EDGE_TO_VERTEX_TABLE[i]
                 .map(|i| i as usize);
-            let [a, b] = [vertices[ai], vertices[bi]];
-            let [sa, sb] = [samples[ai], samples[bi]];
+            let [a, b] = [vertices_positions[ai], vertices_positions[bi]];
+            let [sa, sb] = [vertices_samples[ai], vertices_samples[bi]];
             let [da, db] = [sa, sb]
                 .map(|x| x.0);
             edges[i] = a + -da * (b - a) / (db - da);
@@ -482,33 +483,80 @@ const VERTICES: [UVec3; 8] = [
     UVec3::new(1, 1, 1), UVec3::new(0, 1, 1),
 ];
 
-pub fn run(
-    out: &mut Out,
-    chunk: CellPath,
+fn run_rec<'a>(
+    state: &mut State<'a>,
+    chunk_path: &CellPath,
     root_cell: &svo::TerrainCell,
-    root_aabb: Aabb3d,
+    root_aabb: &DAabb,
+
+    chunk_aabb: &DAabb,
+    cube_size: &DVec3,
+
+    path: CellPath,
+
     depth: u32,
 ) {
-    let aabb: Aabb3d = chunk.get_aabb(root_aabb.into()).into();
-    let cube_size = aabb.size() / 2f32.powi(depth as i32);
+    let data = root_cell.get_path(path.clone()).into_inner();
 
-    let mut state = State::new(out);
+    if data.empty && depth > 2 {
+        return;
+    }
 
-    for (_, subpath) in PackedIndexIterator::new(depth) {
-        let path = chunk.clone().extended(&subpath);
-        let pos = subpath.get_pos();
+    if depth == 0 {
+        let path_cube_pos = path.get_pos();
 
         let samples = VERTICES
             .map(|v| {
                 path.neighbor(v.x as _, v.y as _, v.z as _)
                     .map(|n| root_cell.get_path(n).into_inner())
-                    .map(|cell| (cell.distance.to_f32(), cell.kind))
+                    .map(|cell| (cell.distance.to_f64(), cell.kind))
                     .unwrap_or_default()
             });
 
         kernel(
-            &mut state, samples, VERTICES
-                .map(|d| (pos + d).as_vec3() * cube_size + aabb.min)
+            state, samples, VERTICES
+                .map(|offset| (path_cube_pos + offset).as_dvec3() * *cube_size + root_aabb.min())
+        );
+        return;
+    }
+
+    for comp in CellPath::components() {
+        run_rec(
+            state,
+            chunk_path, root_cell, root_aabb,
+
+            chunk_aabb,
+            cube_size,
+
+            path.clone().with_push(comp),
+
+            depth - 1
         );
     }
+}
+
+pub fn run(
+    out: &mut Out,
+    chunk: CellPath,
+    root_cell: &svo::TerrainCell,
+    root_aabb: DAabb,
+    depth: u32,
+) {
+    let chunk_aabb = chunk.get_aabb(root_aabb);
+    let cube_size = chunk_aabb.size() / 2f64.powi(depth as i32);
+
+    run_rec(
+        &mut State::new(out),
+
+        &chunk,
+        root_cell,
+        &root_aabb,
+
+        &chunk_aabb,
+        &cube_size,
+
+        chunk.clone(),
+
+        depth,
+    )
 }

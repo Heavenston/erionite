@@ -15,6 +15,7 @@ impl SdfSample {
         svo::TerrainCellData {
             kind: self.material,
             distance: f16::from_f64(self.dist),
+            empty: self.material.empty(),
         }
     }
 }

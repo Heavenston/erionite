@@ -327,7 +327,7 @@ fn chunk_split_merge_system(
                     ChunkComponent::new(chunk.renderer, child_path.clone()),
                     Transform64Bundle::default(),
                     VisibilityBundle::default(),
-                    Into::<Aabb>::into(child_path.get_aabb(options.root_aabb)),
+                    // Into::<Aabb>::into(child_path.get_aabb(options.root_aabb)),
                 )).set_parent(chunk_entity).id();
 
                 if let Some(on_new_chunk) = &mut options.on_new_chunk {
@@ -443,7 +443,7 @@ fn chunk_system(
             chunk.mesh_task = Some(task_runner::spawn(move || {
                 let mut out = marching_cubes::Out::new(true, false);
                 marching_cubes::run(
-                    &mut out, chunkpath, &*data, root_aabb.into(), subdivs
+                    &mut out, chunkpath, &*data, root_aabb, subdivs
                 );
 
                 if out.vertices.len() == 0 {
