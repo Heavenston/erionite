@@ -122,11 +122,14 @@ fn setup_system(
     let aabb_size = 2f64.powi((subdivs-2) as i32);
     let radius = aabb_size / 4.;
     let aabb: DAabb = DAabb::new_center_size(DVec3::ZERO, DVec3::splat(aabb_size));
-    let volume = (radius.powi(3) * std::f64::consts::PI * 4.) / 3.;
-    let mass = volume / 1_000_000.;
+    // let volume = (radius.powi(3) * std::f64::consts::PI * 4.) / 3.;
+    // let mass = volume / 1_000_000.;
+    let target_surface_gravity = 9.8;
+    let mass = (target_surface_gravity / gravity::GRAVITY_CONSTANT) * radius.powi(2);
 
-    log::info!("AABB Size: {aabb_size}");
+    log::info!("AABB Size    : {aabb_size}");
     log::info!("Planet radius: {radius}");
+    log::info!("Planet's mass: {radius}");
 
     commands.spawn((
         PbrBundle {
@@ -445,7 +448,7 @@ fn camera_system(
 
     camera.gravity_redirect_enabled =
         !camera.forced_gravity_toggle &&
-        camera_gravity.force.length() > 4.;
+        camera_gravity.force.length() > 9.;
     if camera.gravity_redirect_enabled {
         let target_down = camera_gravity.force.normalize();
         let target_down_local = camera_trans.rotation.inverse() * target_down;

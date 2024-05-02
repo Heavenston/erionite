@@ -2,7 +2,7 @@ use bevy::{math::DVec3, prelude::*};
 use doprec::GlobalTransform64;
 use rapier_overlay::*;
 
-const GRAVITY_CONSTANT: f64 = 6.6743;
+pub const GRAVITY_CONSTANT: f64 = 6.6743;
 
 pub struct GravityPlugin;
 
