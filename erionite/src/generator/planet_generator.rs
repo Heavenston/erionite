@@ -71,23 +71,13 @@ impl Generator for PlanetGenerator {
             move |&sp| {
                 let spa = [sp.x, sp.y, sp.z].map(|x| x);
 
-                let planet_dist = spa.iter().map(|x| x*x).sum::<f64>();
+                let planet_dist_squared = spa.iter().map(|x| x*x).sum::<f64>();
 
-                if planet_dist < self.radius.powi(2) * 0.5 {
-                    return svo::SdfSample {
-                        dist: planet_dist.sqrt() - self.radius,
-                        material: svo::TerrainCellKind::Stone,
-                    };
-                }
-                if planet_dist > self.radius.powi(2) * 1.5 {
-                    return svo::SdfSample {
-                        dist: planet_dist.sqrt() - self.radius,
-                        material: svo::TerrainCellKind::Air,
-                    };
-                }
+                let is_under = planet_dist_squared < (self.radius - 300.).powi(2);
+                let is_above = planet_dist_squared > (self.radius + 300.).powi(2);
 
-                let dist = if false {
-                    planet_dist.sqrt() - self.radius
+                let dist = if is_under || is_above {
+                    planet_dist_squared.sqrt() - self.radius
                 }
                 else {
                     final_noise.get(spa)
