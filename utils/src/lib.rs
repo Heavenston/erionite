@@ -12,6 +12,7 @@ mod generic_glam;
 pub use generic_glam::*;
 
 pub use replace_with::replace_with_or_abort as replace_with;
+pub use bimap::BiHashMap;
 
 use bevy_math::{BVec3, UVec3};
 use std::{mem::{ManuallyDrop, MaybeUninit}, ops::{Add, Range, Sub}};

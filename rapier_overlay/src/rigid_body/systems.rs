@@ -81,7 +81,7 @@ pub fn rigid_body_remove_system(
             })
         )
     {
-        let Some(handle) = context.entities2rigidbodies.remove(&entity)
+        let Some((_, handle)) = context.entities2rigidbodies.remove_by_left(&entity)
         else { continue; };
 
         let RapierContext {

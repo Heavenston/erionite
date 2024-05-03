@@ -75,7 +75,7 @@ pub fn collider_remove_system(
             })
         )
     {
-        let Some(handle) = context.entities2colliders.remove(&entity)
+        let Some((_, handle)) = context.entities2colliders.remove_by_left(&entity)
         else { continue; };
 
         let RapierContext {
