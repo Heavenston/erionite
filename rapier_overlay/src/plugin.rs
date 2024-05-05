@@ -10,7 +10,7 @@ pub struct RapierPlugin {
 impl Plugin for RapierPlugin {
     fn build(&self, app: &mut App) {
         app
-            .insert_resource(resources::RapierContext::default())
+            .insert_resource(RapierContext::default())
             .add_systems(PostStartup, (
                 rigid_body_init_system,
                 collider_init_system,

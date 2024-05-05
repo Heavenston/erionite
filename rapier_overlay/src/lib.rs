@@ -8,8 +8,11 @@ pub(crate) use systems::*;
 mod plugin;
 pub use plugin::*;
 
-mod resources;
-pub use resources::*;
+mod config;
+pub use config::*;
+
+mod context;
+pub use context::*;
 
 mod collider;
 pub use collider::*;

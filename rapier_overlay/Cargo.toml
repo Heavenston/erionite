@@ -4,7 +4,7 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.13.2", default-features = false }
+bevy = { version = "0.13.2", default-features = false, features = ["bevy_render"] }
 doprec = { path = "../doprec" }
 getset = "0.1.2"
 log = "0.4.21"
