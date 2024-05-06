@@ -13,6 +13,9 @@ pub fn physics_step_system(
     let cfg = cfg.as_ref().map(|res| &**res).unwrap_or(&default_cfg);
 
     let params = IntegrationParameters {
+        // Other sytems like the character_controller also need delta time,
+        // and other in user-land may do to, so we can't do anything about it
+        // (other than add a time_scale, but in that case we need to add it everywhere)
         dt: time.delta_seconds_f64(),
         ..default()
     };

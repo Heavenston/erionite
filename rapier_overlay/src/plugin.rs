@@ -1,6 +1,9 @@
 use bevy::prelude::*;
 use crate::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, SystemSet)]
+pub struct PhysicsStepSystems;
+
 #[derive(Default)]
 pub struct RapierPlugin {
     // Prevents creation without using Default
@@ -27,9 +30,10 @@ impl Plugin for RapierPlugin {
                 collider_init_system,
             ).chain().after(doprec::TransformSystems))
             .add_systems(FixedUpdate, (
+                characher_controllers_physics_step_system,
                 physics_step_system,
                 physics_rapier2bevy_sync_system,
-            ).chain())
+            ).in_set(PhysicsStepSystems).chain())
         ;
     }
 }

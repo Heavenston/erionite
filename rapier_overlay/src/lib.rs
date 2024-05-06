@@ -20,6 +20,9 @@ pub use collider::*;
 mod rigid_body;
 pub use rigid_body::*;
 
+mod character_controller;
+pub use character_controller::*;
+
 pub use rapier3d_f64 as rapier;
 
 pub type Float = rapier::math::Real;
