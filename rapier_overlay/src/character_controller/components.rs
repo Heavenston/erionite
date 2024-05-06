@@ -23,6 +23,7 @@ pub struct CharacterControllerComp {
     pub max_slope_climb_angle: Float,
     pub min_slope_slide_angle: Float,
     pub snap_to_ground: Option<CharacterLength>,
+    pub normal_nudge_factor: Float,
 }
 
 impl Default for CharacterControllerComp {
@@ -41,6 +42,7 @@ impl From<KinematicCharacterController> for CharacterControllerComp {
             max_slope_climb_angle: value.max_slope_climb_angle,
             min_slope_slide_angle: value.min_slope_slide_angle,
             snap_to_ground: value.snap_to_ground,
+            normal_nudge_factor: value.normal_nudge_factor,
         }
     }
 }
@@ -55,6 +57,7 @@ impl Into<KinematicCharacterController> for &CharacterControllerComp {
             max_slope_climb_angle: self.max_slope_climb_angle,
             min_slope_slide_angle: self.min_slope_slide_angle,
             snap_to_ground: self.snap_to_ground,
+            normal_nudge_factor: self.normal_nudge_factor,
         }
     }
 }

@@ -158,11 +158,11 @@ pub fn rigid_body_update_system(
         };
 
         if comp.can_sleep {
-            rigid_body.activation_mut().linear_threshold = RigidBodyActivation::default_linear_threshold();
+            rigid_body.activation_mut().normalized_linear_threshold = RigidBodyActivation::default_normalized_linear_threshold();
             rigid_body.activation_mut().angular_threshold = RigidBodyActivation::default_angular_threshold();
         }
         else {
-            rigid_body.activation_mut().linear_threshold = -1.;
+            rigid_body.activation_mut().normalized_linear_threshold = -1.;
             rigid_body.activation_mut().angular_threshold = -1.;
         }
     }

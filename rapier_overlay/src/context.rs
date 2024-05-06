@@ -4,7 +4,7 @@ use doprec::GlobalTransform64;
 use crate::*;
 use rapier::{
     dynamics::{CCDSolver, ImpulseJointSet, IslandManager, MultibodyJointSet, RigidBodyHandle, RigidBodySet},
-    geometry::{BroadPhase, Collider, ColliderHandle, ColliderSet, InteractionGroups, NarrowPhase, Ray},
+    geometry::{BroadPhaseMultiSap, Collider, ColliderHandle, ColliderSet, InteractionGroups, NarrowPhase, Ray},
     pipeline::{PhysicsPipeline, QueryFilter as RapierQFilter, QueryFilterFlags, QueryPipeline}
 };
 
@@ -26,7 +26,7 @@ pub struct RapierContext {
     pub(crate) collider_set: ColliderSet,
     pub(crate) physics_pipeline: PhysicsPipeline,
     pub(crate) island_manager: IslandManager,
-    pub(crate) broad_phase: BroadPhase,
+    pub(crate) broad_phase: BroadPhaseMultiSap,
     pub(crate) narrow_phase: NarrowPhase,
     pub(crate) impulse_joint_set: ImpulseJointSet,
     pub(crate) multibody_joint_set: MultibodyJointSet,

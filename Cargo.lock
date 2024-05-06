@@ -2886,15 +2886,16 @@ dependencies = [
 
 [[package]]
 name = "parry3d-f64"
-version = "0.13.7"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d259245abcc09379798e4d373d9019e0df4dc6f7f128ecd68700a5927dc32034"
+checksum = "f565dc473dc6140b331efbe345479921f6870ea2737e3e375b2f88d3977ddc43"
 dependencies = [
  "approx",
  "arrayvec",
  "bitflags 1.3.2",
  "downcast-rs",
  "either",
+ "log",
  "nalgebra",
  "num-derive",
  "num-traits",
@@ -3108,9 +3109,9 @@ checksum = "9c8a99fddc9f0ba0a85884b8d14e3592853e787d581ca1816c91349b10e4eeab"
 
 [[package]]
 name = "rapier3d-f64"
-version = "0.18.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8c6a3f44f255083bf89da37ffdf109f19717d936a9e2ae34108e3f994406e04"
+checksum = "5f70e6ce50cc26d6693ad666ccc31ae9ee82ae47a9915427e144d9c29d8e9079"
 dependencies = [
  "approx",
  "arrayvec",
@@ -3118,9 +3119,11 @@ dependencies = [
  "bitflags 1.3.2",
  "crossbeam",
  "downcast-rs",
+ "log",
  "nalgebra",
  "num-derive",
  "num-traits",
+ "ordered-float",
  "parry3d-f64",
  "rustc-hash",
  "serde",
