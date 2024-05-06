@@ -221,6 +221,10 @@ impl GlobalTransform64 {
         self.0.translation
     }
 
+    pub fn rotation(&self) -> DQuat {
+        self.0.to_scale_rotation_translation().1
+    }
+
     pub fn from_translation(translation: DVec3) -> Self {
         Self(DAffine3::from_translation(translation))
     }
@@ -235,6 +239,42 @@ impl GlobalTransform64 {
 
     pub fn inverse(&self) -> Self {
         Self(self.0.inverse())
+    }
+
+    pub fn local_x(&self) -> DVec3 {
+        self.rotation() * DVec3::X
+    }
+
+    pub fn local_y(&self) -> DVec3 {
+        self.rotation() * DVec3::Y
+    }
+
+    pub fn local_z(&self) -> DVec3 {
+        self.rotation() * DVec3::Z
+    }
+
+    pub fn forward(&self) -> DVec3 {
+        -self.local_z()
+    }
+
+    pub fn back(&self) -> DVec3 {
+        self.local_z()
+    }
+
+    pub fn left(&self) -> DVec3 {
+        -self.local_x()
+    }
+
+    pub fn right(&self) -> DVec3 {
+        self.local_x()
+    }
+
+    pub fn up(&self) -> DVec3 {
+        self.local_y()
+    }
+
+    pub fn down(&self) -> DVec3 {
+        -self.local_y()
     }
 }
 
