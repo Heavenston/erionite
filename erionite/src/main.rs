@@ -3,12 +3,10 @@
 
 mod generator;
 mod svo_renderer;
-use gravity::GravityFieldSample;
 use svo_renderer::{ChunkComponent, SvoRendererBundle, SvoRendererComponent, SvoRendererComponentOptions};
 mod svo_provider;
 use svo_provider::generator_svo_provider;
 pub mod task_runner;
-mod gravity;
 
 use bevy::{core_pipeline::{bloom::{BloomCompositeMode, BloomSettings}, Skybox}, diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::system::EntityCommands, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, NotShadowCaster, NotShadowReceiver}, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, window::{CursorGrabMode, PrimaryWindow}};
 use utils::DAabb;
@@ -66,7 +64,7 @@ fn main() {
                 .disable::<bevy::transform::TransformPlugin>()
                 .disable::<bevy::log::LogPlugin>(),
             svo_renderer::SvoRendererPlugin::default(),
-            gravity::GravityPlugin,
+            nbody::NBodyPlugin::default(),
             DoprecPlugin::default(),
             RapierPlugin::default(),
         ))
@@ -111,6 +109,8 @@ impl FromWorld for Cam {
 struct DebugTextComponent;
 
 fn setup_system(
+    gravity_cfg: Res<nbody::GravityConfig>,
+
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -125,7 +125,7 @@ fn setup_system(
     // let volume = (radius.powi(3) * std::f64::consts::PI * 4.) / 3.;
     // let mass = volume / 1_000_000.;
     let target_surface_gravity = 9.8;
-    let mass = (target_surface_gravity / gravity::GRAVITY_CONSTANT) * radius.powi(2);
+    let mass = (target_surface_gravity / gravity_cfg.gravity_contant) * radius.powi(2);
 
     log::info!("AABB Size    : {aabb_size}");
     log::info!("Planet radius: {radius}");
@@ -203,10 +203,10 @@ fn setup_system(
             aabb
         ).into(),
     }).insert((
-        gravity::Massive {
+        nbody::Massive {
             mass,
         },
-        gravity::Attractor,
+        nbody::Attractor::default(),
     ));
 
     let cam_pos = DVec3::new(
@@ -232,7 +232,7 @@ fn setup_system(
         })
         .insert((
             FloatingOrigin,
-            GravityFieldSample::default(),
+            nbody::GravityFieldSample::default(),
             BloomSettings {
                 intensity: 0.02,
                 composite_mode: BloomCompositeMode::EnergyConserving,
@@ -285,7 +285,7 @@ fn update_debug_text_system(
     time: Res<Time>,
     diagnostics: Res<DiagnosticsStore>,
 
-    cam_query: Query<(&Transform64, &GravityFieldSample)>,
+    cam_query: Query<(&Transform64, &nbody::GravityFieldSample)>,
     camera: Res<Cam>,
 
     mut debug_text: Query<&mut Text, With<DebugTextComponent>>,
@@ -332,7 +332,7 @@ fn update_debug_text_system(
     let cam_speed = camera.speed;
 
     let mut grav_info = String::new();
-    grav_info += &format!("G: {:.2}", cam_gravity.force.length());
+    grav_info += &format!("G: {:.2}", cam_gravity.field_force.length());
     grav_info += ", grav_redirect: ";
     grav_info += if camera.gravity_redirect_enabled { "enabled" } else { "disabled" };
     grav_info += "\n";
@@ -349,7 +349,7 @@ Camera: speed {cam_speed:.3}, position {cam_pos:.3?} \n\
 fn camera_system(
     mut commands: Commands,
 
-    mut camera_query: Query<(&mut Transform64, &GravityFieldSample)>,
+    mut camera_query: Query<(&mut Transform64, &nbody::GravityFieldSample)>,
     mut renderers: Query<&mut SvoRendererComponent>,
 
     mut camera: ResMut<Cam>,
@@ -419,9 +419,9 @@ fn camera_system(
                 ..ColliderBundle::from(ColliderBuilder::ball(radius as f64))
             },
             RigidBodyBundle::dynamic(),
-            gravity::GravityFieldSample::default(),
-            gravity::Massive::default(),
-            gravity::Attracted,
+            nbody::GravityFieldSample::default(),
+            nbody::Massive::default(),
+            nbody::Attracted,
         ));
     }
 
@@ -448,9 +448,9 @@ fn camera_system(
 
     camera.gravity_redirect_enabled =
         !camera.forced_gravity_toggle &&
-        camera_gravity.force.length() > 9.;
+        camera_gravity.field_force.length() > 9.;
     if camera.gravity_redirect_enabled {
-        let target_down = camera_gravity.force.normalize();
+        let target_down = camera_gravity.field_force.normalize();
         let target_down_local = camera_trans.rotation.inverse() * target_down;
         let angle = DVec3::new(
             target_down_local.x,

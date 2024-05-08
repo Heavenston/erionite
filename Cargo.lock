@@ -1690,6 +1690,7 @@ dependencies = [
  "fern",
  "itertools",
  "log",
+ "nbody",
  "noise",
  "ordered-float",
  "rand",
@@ -2556,6 +2557,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "nbody"
+version = "0.0.0"
+dependencies = [
+ "bevy",
+ "doprec",
+ "getset",
+ "rapier_overlay",
+ "utils",
 ]
 
 [[package]]

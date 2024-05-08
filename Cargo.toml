@@ -25,4 +25,5 @@ members = [
   "utils",
   "rapier_overlay",
   "doprec",
+  "nbody",
 ]

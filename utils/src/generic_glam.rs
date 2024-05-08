@@ -94,6 +94,8 @@ pub trait Vec3Ext<T: Num + Copy>
         )
     }
 
+    fn is_zero_approx(&self) -> bool;
+
     fn x(&self) -> T;
     fn y(&self) -> T;
     fn z(&self) -> T;
@@ -141,6 +143,10 @@ impl Vec3Ext<f32> for Vec3 {
     fn array_mut(&mut self) -> [&mut f32; 3] {
         [&mut self.x, &mut self.y, &mut self.z]
     }
+
+    fn is_zero_approx(&self) -> bool {
+        self.array().into_iter().all(|v| v.abs() <= f32::EPSILON)
+    }
 }
 
 impl Vec3Ext<f64> for DVec3 {
@@ -178,5 +184,9 @@ impl Vec3Ext<f64> for DVec3 {
 
     fn array_mut(&mut self) -> [&mut f64; 3] {
         [&mut self.x, &mut self.y, &mut self.z]
+    }
+
+    fn is_zero_approx(&self) -> bool {
+        self.array().into_iter().all(|v| v.abs() <= f64::EPSILON)
     }
 }
