@@ -12,6 +12,7 @@ strip = false
 lto = false
 
 [profile.release]
+codegen-units = 1
 lto = "fat"
 strip = true
 
