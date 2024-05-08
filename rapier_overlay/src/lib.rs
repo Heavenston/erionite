@@ -23,6 +23,9 @@ pub use rigid_body::*;
 mod character_controller;
 pub use character_controller::*;
 
+mod query_filter;
+pub use query_filter::*;
+
 pub use rapier3d_f64 as rapier;
 
 pub type Float = rapier::math::Real;

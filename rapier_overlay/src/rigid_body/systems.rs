@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use doprec::{GlobalTransform64, Transform64};
-use rapier::{dynamics::{RigidBodyActivation, RigidBodyBuilder}, na::Translation3};
+use rapier::{dynamics::{RigidBodyActivation, RigidBodyBuilder, RigidBodyType}, na::Translation3};
 
 use crate::*;
 
@@ -192,12 +192,20 @@ pub fn rigid_body_update_system(
 
         if Some(comp) != entities_last_set_transform.get(&entity) {
             entities_last_set_transform.insert(entity, *comp);
-
             let trans = Transform64::from(*comp);
-            let tt = trans.translation.to_rapier();
-            rigid_body.set_translation(tt, true);
-            let rr = trans.rotation.to_rapier();
-            rigid_body.set_rotation(rr, true);
+
+            match rigid_body.body_type() {
+                RigidBodyType::Dynamic | RigidBodyType::Fixed | RigidBodyType::KinematicVelocityBased => {
+                    let tt = trans.translation.to_rapier();
+                    rigid_body.set_translation(tt, true);
+                    let rr = trans.rotation.to_rapier();
+                    rigid_body.set_rotation(rr, true);
+                },
+                RigidBodyType::KinematicPositionBased => {
+                    rigid_body.set_next_kinematic_rotation(trans.rotation.to_rapier());
+                    rigid_body.set_next_kinematic_translation(trans.translation.to_rapier());
+                },
+            }
         }
     }
 }

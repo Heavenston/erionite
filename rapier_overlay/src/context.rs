@@ -4,19 +4,9 @@ use doprec::GlobalTransform64;
 use crate::*;
 use rapier::{
     dynamics::{CCDSolver, ImpulseJointSet, IslandManager, MultibodyJointSet, RigidBodyHandle, RigidBodySet},
-    geometry::{BroadPhaseMultiSap, Collider, ColliderHandle, ColliderSet, InteractionGroups, NarrowPhase, Ray},
-    pipeline::{PhysicsPipeline, QueryFilter as RapierQFilter, QueryFilterFlags, QueryPipeline}
+    geometry::{BroadPhaseMultiSap, Collider, ColliderHandle, ColliderSet, NarrowPhase, Ray},
+    pipeline::{PhysicsPipeline, QueryFilter as RapierQFilter, QueryPipeline}
 };
-
-/// See [rapier::pipeline::QueryFilter]
-#[derive(Copy, Clone, Default)]
-pub struct QueryFilter<'a> {
-    pub flags: QueryFilterFlags,
-    pub groups: Option<InteractionGroups>,
-    pub exclude_collider: Option<ColliderHandle>,
-    pub exclude_rigid_body: Option<RigidBodyHandle>,
-    pub predicate: Option<&'a dyn Fn(Entity, &Collider) -> bool>,
-}
 
 #[derive(Resource, Default)]
 pub struct RapierContext {
@@ -56,17 +46,7 @@ impl RapierContext {
             dir: direction.to_rapier(),
         };
 
-        let mapped_predicate = filter.predicate.map(|pred| {
-            move |handle: ColliderHandle, collider: &Collider| -> bool {
-                let Some(&entity) = self.entities2colliders.get_by_right(&handle)
-                else {
-                    log::warn!("Collider has no registered entity");
-                    return false;
-                };
-
-                pred(entity, collider)
-            }
-        });
+        to_rapier_query!(rapier_filter = filter, self);
 
         let (handle, dist) = self.query_pipeline.cast_ray(
             &self.rigid_body_set,
@@ -74,13 +54,7 @@ impl RapierContext {
             &ray,
             max_toi,
             solid,
-            RapierQFilter {
-                flags: filter.flags,
-                groups: filter.groups,
-                exclude_collider: filter.exclude_collider,
-                exclude_rigid_body: filter.exclude_rigid_body,
-                predicate: mapped_predicate.as_ref().map(|f| f as _),
-            },
+            rapier_filter,
         )?;
         let Some(&entity) = self.entities2colliders.get_by_right(&handle)
         else {

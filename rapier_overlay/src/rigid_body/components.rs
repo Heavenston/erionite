@@ -38,8 +38,8 @@ impl RigidBodyBundle {
 }
 
 #[derive(getset::CopyGetters, Default, Debug, Component, Clone)]
+#[getset(get_copy = "pub")]
 pub struct RigidBodyHandleComp {
-    #[getset(get_copy = "pub")]
     pub(crate) handle: RigidBodyHandle,
 }
 
@@ -56,9 +56,9 @@ pub struct RigidBodyDampingComp {
 }
 
 #[derive(getset::CopyGetters, Debug, Component, Clone)]
+#[getset(get_copy = "pub")]
 pub struct RigidBodySleepingComp {
     pub can_sleep: bool,
-    #[getset(get_copy = "pub")]
     pub(crate) sleeping: bool,
 }
 
@@ -88,8 +88,8 @@ impl RigidBodySleepingComp {
 }
 
 #[derive(getset::CopyGetters, Default, Debug, Component, Clone)]
+#[getset(get_copy = "pub")]
 pub struct VelocityComp {
-    #[getset(get_copy = "pub")]
     pub(crate) linvel: Vector3,
 }
 
@@ -102,8 +102,8 @@ impl VelocityComp {
 }
 
 #[derive(getset::CopyGetters, Default, Debug, Component, Clone)]
+#[getset(get_copy = "pub")]
 pub struct AngularVelocityComp {
-    #[getset(get_copy = "pub")]
     pub(crate) angvel: Vector3,
 }
 

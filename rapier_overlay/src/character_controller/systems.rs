@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use crate::*;
 
-use rapier::control::KinematicCharacterController;
+use rapier::pipeline::QueryFilter;
 
 pub fn characher_controllers_physics_step_system(
     time: Res<Time<Fixed>>,
@@ -28,11 +28,23 @@ pub fn characher_controllers_physics_step_system(
         collider_handle_comp,
         rigid_body_comp,
     ) in &mut characters {
-        let rapier_controller: KinematicCharacterController = controller.into();
+        let rapier_controller = controller.controller();
 
         let Some(collider) = collider_set.get(collider_handle_comp.handle())
         else { continue; };
         let mut collisions = vec![];
+
+        let mut filter = QueryFilter {
+            flags: controller.filter_flags,
+            groups: controller.filter_groups,
+            predicate: None,
+            ..default()
+        };
+
+        filter = filter.exclude_collider(collider_handle_comp.handle());
+        if let Some(rb_handle) = rigid_body_comp {
+            filter = filter.exclude_rigid_body(rb_handle.handle());
+        }
 
         let moved = rapier_controller.move_shape(
             dt,
@@ -42,7 +54,7 @@ pub fn characher_controllers_physics_step_system(
             collider.shape(),
             collider.position(),
             next_translation.next_translation.to_rapier(),
-            default(),
+            filter,
             |c| {
                 collisions.push(c);
             },
@@ -57,12 +69,13 @@ pub fn characher_controllers_physics_step_system(
                 collider.shape(),
                 collider.mass(),
                 collision,
-                default(),
+                filter,
             );
         }
 
         results.on_ground = moved.grounded;
         results.is_sliding = moved.is_sliding_down_slope;
+        results.translation = moved.translation.to_bevy();
 
         if let Some(rb) = rigid_body_comp
             .and_then(|rb| rigid_body_set.get_mut(rb.handle))

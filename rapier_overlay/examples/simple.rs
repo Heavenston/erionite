@@ -1,9 +1,17 @@
 #![feature(type_changing_struct_update)]
 #![feature(option_take_if)]
 
-use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, input::mouse::{MouseMotion, MouseWheel}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*, render::mesh::{PlaneMeshBuilder, SphereKind, SphereMeshBuilder}, window::{CursorGrabMode, PrimaryWindow}};
-use doprec::{ DoprecPlugin, FloatingOrigin, Transform64, Transform64Bundle };
-use rapier::geometry::ColliderBuilder;
+use bevy::{
+    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
+    input::mouse::{MouseMotion, MouseWheel},
+    math::DVec3,
+    pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
+    prelude::*,
+    render::mesh::{PlaneMeshBuilder, SphereKind, SphereMeshBuilder},
+    window::{CursorGrabMode, PrimaryWindow},
+};
+use doprec::{ DoprecPlugin, FloatingOrigin, GlobalTransform64, Transform64, Transform64Bundle };
+use rapier::{dynamics::RigidBodyType, geometry::{Capsule, ColliderBuilder, SharedShape}, pipeline::QueryFilterFlags};
 use rapier_overlay::*;
 
 fn setup_logger() -> Result<(), Box<dyn std::error::Error>> {
@@ -61,28 +69,44 @@ fn main() {
         ))
 
         .add_systems(Startup, setup_system)
-        .add_systems(Update, (camera_system, update_debug_text_system))
+        .add_systems(Update, (
+            update_debug_text_system,
+            player_input_system,
+        ))
+        .add_systems(FixedUpdate, (
+            player_physics_system.before(PhysicsStepSystems),
+            player_after_physics_system.after(PhysicsStepSystems),
+        ))
 
         .insert_resource(DirectionalLightShadowMap { size: 2048 })
-        .init_resource::<Cam>()
+        .init_resource::<Player>()
         
         .run();
 }
 
 #[derive(Resource)]
-pub struct Cam {
-    pub entity: Option<Entity>,
+pub struct Player {
+    pub entity: Entity,
+    pub camera_entity: Entity,
     pub speed: f64,
+
+    pub input_velocity: DVec3,
+    pub velocity: DVec3,
+
+    pub collide_with_rigid_bodies: bool,
 }
 
-impl Cam {
-}
-
-impl FromWorld for Cam {
+impl FromWorld for Player {
     fn from_world(_: &mut World) -> Self {
         Self {
-            entity: None,
+            entity: Entity::PLACEHOLDER,
+            camera_entity: Entity::PLACEHOLDER,
             speed: 10.,
+
+            input_velocity: default(),
+            velocity: default(),
+
+            collide_with_rigid_bodies: true,
         }
     }
 }
@@ -94,7 +118,7 @@ fn setup_system(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut camera: ResMut<Cam>,
+    mut player: ResMut<Player>,
 ) {
     // Sun's light
     commands.spawn(DirectionalLightBundle {
@@ -125,7 +149,7 @@ fn setup_system(
         let cube_size = DVec3::new(2., 1., 1.);
         let mesh = meshes.add(Cuboid::from_size(cube_size.as_vec3()));
 
-        let origin = DVec3::new(-20., 0.1, 0.);
+        let origin = DVec3::new(-20., 1.1, 0.);
 
         let level_max = 50;
         for level in 0..level_max {
@@ -146,7 +170,7 @@ fn setup_system(
                         cube_size.z / 2.,
                     )),
                     RigidBodyBundle {
-                        sleeping: RigidBodySleepingComp::new_sleeping(),
+                        // sleeping: RigidBodySleepingComp::new_sleeping(),
                         ..RigidBodyBundle::dynamic()
                     }
                 )).insert(Transform64Bundle {
@@ -193,25 +217,48 @@ fn setup_system(
 
     let cam_pos = DVec3::new(0., 3., 0.);
     
-    // camera
-    camera.entity = Some(commands
-        .spawn(Camera3dBundle {
-            projection: Projection::Perspective(PerspectiveProjection {
-                fov: 100f32.to_radians(),
-                ..default()
-            }),
-            ..default()
+    // player
+    player.entity = commands.spawn_empty()
+        .insert(ColliderBundle::from(ColliderBuilder::new(SharedShape::new(
+            Capsule::new_y(1., 0.5)
+        )).mass(100.)))
+        .insert(RigidBodyBundle {
+            ..RigidBodyBundle::new(RigidBodyType::KinematicPositionBased)
         })
         .insert(Transform64Bundle {
             local: Transform64::from_translation(cam_pos)
                 .looking_at(DVec3::NEG_X + cam_pos, cam_pos.normalize()),
             ..default()
         })
-        .insert((
-            FloatingOrigin,
-        ))
+        .insert(CharacterControllerBundle {
+            comp: CharacterControllerComp {
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|c| {
+            player.camera_entity = c.spawn_empty()
+                .insert(FloatingOrigin)
+                .insert(Camera3dBundle {
+                    projection: Projection::Perspective(PerspectiveProjection {
+                        fov: 100f32.to_radians(),
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .insert(Transform64Bundle {
+                    local: Transform64::from_translation(DVec3::new(
+                        0.,
+                        1.5,
+                        0.,
+                    )),
+                    ..default()
+                })
+                .id()
+            ;
+        })
         .id()
-    );
+    ;
 
     let root_uinode = commands
         .spawn(NodeBundle {
@@ -251,16 +298,14 @@ fn update_debug_text_system(
     time: Res<Time>,
     diagnostics: Res<DiagnosticsStore>,
 
-    cam_query: Query<(&Transform64,)>,
-    camera: Res<Cam>,
+    player_query: Query<(&Transform64,)>,
+    player: Res<Player>,
 
     mut debug_text: Query<&mut Text, With<DebugTextComponent>>,
 
     rigid_bodies: Query<(&RigidBodySleepingComp,)>,
 ) {
-    let Some(cam_entity) = camera.entity
-    else { return; };
-    let (cam_transform,) = cam_query.get(cam_entity).unwrap();
+    let (player_transform,) = player_query.get(player.entity).unwrap();
 
     let mut fps = 0.0;
     if let Some(fps_diagnostic) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
@@ -287,25 +332,35 @@ fn update_debug_text_system(
         }
     }
 
-    let cam_pos = cam_transform.translation;
-    let cam_speed = camera.speed;
+    let player_pos = player_transform.translation;
+    let player_speed = player.speed;
+
+    let inf_inert = !player.collide_with_rigid_bodies;
 
     let mut debug_text = debug_text.single_mut();
     debug_text.sections[0].value = format!("\
-{fps:.1} fps - {frame_time:.3} ms/frame\n\
-Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
-Rigid Bodies: {rigid_body_count}, sleeping: {slepping_body_count}\n\
+    {fps:.1} fps - {frame_time:.3} ms/frame\n\
+    Player:\n - speed {player_speed:.3}\n - position {player_pos:.3?}\n - infinite inertia: {inf_inert} (toggle with c)\n\
+    Rigid Bodies: {rigid_body_count}, sleeping: {slepping_body_count}\n\
     ");
 }
 
-fn camera_system(
+fn player_input_system(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
 
-    mut camera_query: Query<(&mut Transform64,)>,
+    mut player_query: Query<(
+        &mut Transform64,
+        &mut CharacterControllerComp,
+        &CharacterResultsComp,
+    ), With<CharacterControllerComp>>,
+    mut camera_query: Query<(
+        &mut Transform64,
+        &GlobalTransform64,
+    ), Without<CharacterControllerComp>>,
 
-    mut camera: ResMut<Cam>,
+    mut player: ResMut<Player>,
 
     mut mouse_move_events: EventReader<MouseMotion>,
     mut mouse_wheel_events: EventReader<MouseWheel>,
@@ -313,18 +368,19 @@ fn camera_system(
     kb_input: Res<ButtonInput<KeyCode>>,
     mouse_input: Res<ButtonInput<MouseButton>>,
 
-    time: Res<Time>,
-
     mut q_windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     let mut window = q_windows.single_mut();
-    
-    let Some(entity) = camera.entity
-    else { return; };
 
     let (
-        mut camera_trans,
-    ) = camera_query.get_mut(entity).unwrap();
+        mut player_transform,
+        mut player_char_comp,
+        _player_character_results,
+    ) = player_query.get_mut(player.entity).unwrap();
+    let (
+        mut camera_transform,
+        camera_global_transform,
+    ) = camera_query.get_mut(player.camera_entity).unwrap();
 
     if mouse_input.just_pressed(MouseButton::Left) {
         window.cursor.grab_mode = CursorGrabMode::Confined;
@@ -337,10 +393,24 @@ fn camera_system(
 
     for mwe in mouse_wheel_events.read() {
         if mwe.y < 0. {
-            camera.speed *= 0.9;
+            player.speed *= 0.9;
         }
         else if mwe.y > 0. {
-            camera.speed *= 1.1;
+            player.speed *= 1.1;
+        }
+    }
+
+    if kb_input.just_pressed(KeyCode::Space) {
+        player.velocity.y += 10.;
+    }
+
+    if kb_input.just_pressed(KeyCode::KeyC) {
+        player.collide_with_rigid_bodies = !player.collide_with_rigid_bodies;
+        if player.collide_with_rigid_bodies {
+            player_char_comp.filter_flags = QueryFilterFlags::empty();
+        }
+        else {
+            player_char_comp.filter_flags = QueryFilterFlags::EXCLUDE_DYNAMIC;
         }
     }
 
@@ -348,8 +418,8 @@ fn camera_system(
         for me in mouse_move_events.read() {
             let mov = me.delta.as_dvec2() / -300.;
 
-            camera_trans.rotate_local_y(mov.x);
-            camera_trans.rotate_local_x(mov.y);
+            player_transform.rotate_local_y(mov.x);
+            camera_transform.rotate_local_x(mov.y);
         }
     }
 
@@ -368,34 +438,21 @@ fn camera_system(
                 ..PbrBundle::default()
             },
             ColliderBundle {
-                mass: ColliderMassComp { mass: 50. },
-                ..ColliderBundle::from(ColliderBuilder::ball(1.))
+                ..ColliderBundle::from(ColliderBuilder::ball(1.)
+                    .mass(50.))
             },
             RigidBodyBundle {
-                linvel: VelocityComp::new(camera_trans.forward() * 20.),
+                linvel: VelocityComp::new(camera_global_transform.forward() * 20.),
                 ..RigidBodyBundle::dynamic()
             },
         )).insert(Transform64Bundle {
-            local: Transform64::from_translation(camera_trans.translation),
+            local: Transform64::from_translation(player_transform.translation),
             ..default()
         });
     }
 
-    let forward = camera_trans.forward();
-    let left = camera_trans.left();
-
-    {
-        let target_down = DVec3::new(0., -1., 0.);
-        let target_down_local = camera_trans.rotation.inverse() * target_down;
-        let angle = DVec3::new(
-            target_down_local.x,
-            target_down_local.y,
-            0.,
-        ).angle_between(DVec3::new(0., -1., 0.));
-        let dir = target_down_local.x.signum();
-
-        camera_trans.rotate_local_z(angle.abs() * dir);
-    }
+    let forward = player_transform.forward();
+    let left = player_transform.left();
 
     let mut movement = DVec3::ZERO;
     if kb_input.pressed(KeyCode::KeyW) {
@@ -410,5 +467,39 @@ fn camera_system(
     if kb_input.pressed(KeyCode::KeyD) {
         movement -= left;
     }
-    camera_trans.translation += movement.normalize_or_zero() * camera.speed * (time.delta_seconds() as f64);
+    let speed = player.speed;
+    player.input_velocity = movement.normalize_or_zero() * speed;
+}
+
+fn player_physics_system(
+    mut player_query: Query<&mut CharacterNextTranslationComp>,
+
+    mut player: ResMut<Player>,
+
+    time: Res<Time<Fixed>>,
+) {
+    let mut player_next_translation =
+        player_query.get_mut(player.entity).unwrap();
+
+    let sideway_vel = player.velocity * DVec3::new(1., 0., 1.);
+    let vert_vel = player.velocity * DVec3::new(0., 1., 0.);
+
+    player.velocity = vert_vel + sideway_vel.lerp(player.input_velocity, 0.2);
+    player.velocity += DVec3::new(0., -9.8, 0.) * time.delta_seconds_f64();
+
+    player_next_translation.next_translation =
+         player.velocity * time.delta_seconds_f64();
+}
+
+fn player_after_physics_system(
+    player_query: Query<&CharacterResultsComp>,
+
+    mut player: ResMut<Player>,
+
+    time: Res<Time<Fixed>>,
+) {
+    let results =
+        player_query.get(player.entity).unwrap();
+
+    player.velocity = results.translation() / time.delta_seconds_f64();
 }

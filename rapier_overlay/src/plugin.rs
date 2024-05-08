@@ -33,7 +33,7 @@ impl Plugin for RapierPlugin {
                 characher_controllers_physics_step_system,
                 physics_step_system,
                 physics_rapier2bevy_sync_system,
-            ).in_set(PhysicsStepSystems).chain())
+            ).chain().in_set(PhysicsStepSystems))
         ;
     }
 }

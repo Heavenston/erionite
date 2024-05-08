@@ -2,8 +2,7 @@ use bevy::prelude::*;
 use crate::*;
 
 use rapier::{
-    control::{CharacterAutostep, CharacterLength, KinematicCharacterController},
-    na::Unit,
+    control::{CharacterAutostep, CharacterLength, KinematicCharacterController}, geometry::InteractionGroups, na::Unit, pipeline::QueryFilterFlags
 };
 
 #[derive(Debug, Clone, Default, Bundle)]
@@ -24,6 +23,24 @@ pub struct CharacterControllerComp {
     pub min_slope_slide_angle: Float,
     pub snap_to_ground: Option<CharacterLength>,
     pub normal_nudge_factor: Float,
+
+    pub filter_flags: QueryFilterFlags,
+    pub filter_groups: Option<InteractionGroups>,
+}
+
+impl CharacterControllerComp {
+    pub fn controller(&self) -> KinematicCharacterController {
+        KinematicCharacterController {
+            up: Unit::new_normalize(self.up.to_rapier()),
+            offset: self.offset,
+            slide: self.slide,
+            autostep: self.autostep,
+            max_slope_climb_angle: self.max_slope_climb_angle,
+            min_slope_slide_angle: self.min_slope_slide_angle,
+            snap_to_ground: self.snap_to_ground,
+            normal_nudge_factor: self.normal_nudge_factor,
+        }
+    }
 }
 
 impl Default for CharacterControllerComp {
@@ -43,28 +60,10 @@ impl From<KinematicCharacterController> for CharacterControllerComp {
             min_slope_slide_angle: value.min_slope_slide_angle,
             snap_to_ground: value.snap_to_ground,
             normal_nudge_factor: value.normal_nudge_factor,
-        }
-    }
-}
 
-impl Into<KinematicCharacterController> for &CharacterControllerComp {
-    fn into(self) -> KinematicCharacterController {
-        KinematicCharacterController {
-            up: Unit::new_normalize(self.up.to_rapier()),
-            offset: self.offset,
-            slide: self.slide,
-            autostep: self.autostep,
-            max_slope_climb_angle: self.max_slope_climb_angle,
-            min_slope_slide_angle: self.min_slope_slide_angle,
-            snap_to_ground: self.snap_to_ground,
-            normal_nudge_factor: self.normal_nudge_factor,
+            filter_flags: default(),
+            filter_groups: default(),
         }
-    }
-}
-
-impl Into<KinematicCharacterController> for CharacterControllerComp {
-    fn into(self) -> KinematicCharacterController {
-        (&self).into()
     }
 }
 
@@ -76,7 +75,9 @@ pub struct CharacterNextTranslationComp {
 
 /// Set after applying the target translation
 #[derive(getset::CopyGetters, Debug, Clone, Component, Default)]
+#[getset(get_copy = "pub")]
 pub struct CharacterResultsComp {
     pub(crate) on_ground: bool,
     pub(crate) is_sliding: bool,
+    pub(crate) translation: Vector3,
 }
