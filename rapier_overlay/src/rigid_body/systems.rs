@@ -118,9 +118,9 @@ pub fn rigid_body_update_system(
         Changed<RigidBodySleepingComp>,
     )>,
     forces_changed_query: Query<(
-        &RigidBodyHandleComp, &ExternalForceComp,
+        &RigidBodyHandleComp, &RigidBodyExternalForceComp,
     ), (
-        Changed<ExternalForceComp>,
+        Changed<RigidBodyExternalForceComp>,
     )>,
     transform_changed_query: Query<(
         Entity, &RigidBodyHandleComp, &GlobalTransform64,

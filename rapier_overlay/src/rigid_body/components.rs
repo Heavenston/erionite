@@ -10,7 +10,7 @@ pub struct RigidBodyBundle {
     pub sleeping: RigidBodySleepingComp,
     pub linvel: VelocityComp,
     pub angvel: AngularVelocityComp,
-    pub external_force: ExternalForceComp,
+    pub external_force: RigidBodyExternalForceComp,
 }
 
 impl RigidBodyBundle {
@@ -108,7 +108,7 @@ pub struct AngularVelocityComp {
 }
 
 #[derive(Default, Debug, Component, Clone)]
-pub struct ExternalForceComp {
+pub struct RigidBodyExternalForceComp {
     pub force: Vector3,
     pub torque: Vector3,
 }

@@ -76,7 +76,7 @@ fn compute_field_system(
 fn apply_gravity_to_attracteds_system(
     mut victims: Query<(
         &Massive, &GravityFieldSample,
-        &mut ExternalForceComp
+        &mut RigidBodyExternalForceComp
     ), With<Attracted>>,
 ) {
     for (mass, gravity_sample, mut external_forces) in &mut victims {
