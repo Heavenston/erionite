@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use bevy::{diagnostic::{DiagnosticPath, Diagnostics, DiagnosticsStore}, math::DVec3, prelude::*};
+use bevy::{diagnostic::{DiagnosticPath, Diagnostics}, math::DVec3, prelude::*};
 use doprec::GlobalTransform64;
 #[cfg(feature = "rapier")]
 use rapier_overlay::*;
@@ -9,12 +9,14 @@ use utils::Vec3Ext as _;
 #[derive(Resource)]
 pub struct GravityConfig {
     pub gravity_contant: f64,
+    pub parallel_compute: bool,
 }
 
 impl Default for GravityConfig {
     fn default() -> Self {
         Self {
             gravity_contant: 6.6743f64,
+            parallel_compute: true,
         }
     }
 }
@@ -101,13 +103,17 @@ pub(crate) fn sync_attractor_masses_with_colliders_system(
 pub const GRAVITY_COMPUTE_SYSTEM_DURATION: DiagnosticPath =
     DiagnosticPath::const_new("gravity_compute");
 
-pub(crate) fn compute_gravity_field_system(
+pub(crate) fn compute_gravity_field_single_threaded_system(
     mut diagnostics: Diagnostics,
     cfg: Res<GravityConfig>,
 
     attractors: Query<(Entity, &GlobalTransform64, &Massive, &Attractor)>,
     mut victims: Query<(Entity, &GlobalTransform64, &mut GravityFieldSample)>,
 ) {
+    if cfg.parallel_compute {
+        return;
+    }
+
     let start = Instant::now();
 
     for (victim_entity, victim_pos, mut victim_sample) in &mut victims {
@@ -128,6 +134,45 @@ pub(crate) fn compute_gravity_field_system(
 
         victim_sample.field_force = total_force;
     }
+
+    diagnostics.add_measurement(
+        &GRAVITY_COMPUTE_SYSTEM_DURATION,
+        || start.elapsed().as_millis_f64(),
+    );
+}
+
+pub(crate) fn compute_gravity_field_parallel_system(
+    mut diagnostics: Diagnostics,
+    cfg: Res<GravityConfig>,
+
+    attractors: Query<(Entity, &GlobalTransform64, &Massive, &Attractor)>,
+    mut victims: Query<(Entity, &GlobalTransform64, &mut GravityFieldSample)>,
+) {
+    if !cfg.parallel_compute {
+        return;
+    }
+
+    let start = Instant::now();
+
+    victims.par_iter_mut()
+        .for_each(|(victim_entity, victim_pos, mut victim_sample)| {
+            let mut total_force = DVec3::ZERO;
+
+            for (
+                attractor_entity, attractor_pos, attractor_mass, attractor
+            ) in &attractors {
+                if victim_entity == attractor_entity {
+                    continue;
+                }
+
+                let diff = attractor_pos.translation() - victim_pos.translation();
+                let force = attractor.function.compute(attractor_mass.mass, diff);
+
+                total_force += diff.normalize() * cfg.gravity_contant * force;
+            }
+
+            victim_sample.field_force = total_force;
+        });
 
     diagnostics.add_measurement(
         &GRAVITY_COMPUTE_SYSTEM_DURATION,

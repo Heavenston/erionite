@@ -11,7 +11,7 @@ rapier_overlay = { version = "0.0.0", path = "../rapier_overlay", optional = tru
 utils = { version = "0.0.0", path = "../utils" }
 
 [features]
-rapier = ["rapier_overlay"]
+rapier = ["dep:rapier_overlay"]
 
 [dev-dependencies]
 bevy = "0.13.2"
