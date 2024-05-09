@@ -12,51 +12,56 @@ impl Plugin for OrbitCameraPlugin {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CamMouseMode {
-    #[default]
-    Idle,
+#[derive(Debug, Clone, Copy, derivative::Derivative)]
+#[derivative(Default)]
+pub struct RotateMode {
+    /// Interpolated to target_distance and applied to the transform
+    #[derivative(Default(value = "10."))]
+    distance: f64,
+    #[derivative(Default(value = "10."))]
+    target_distance: f64,
+    /// Interpolated to target_distance and applied to the transform
+    rotation: DQuat,
+    target_rotation: DQuat,
+}
+
+#[derive(Debug, Clone, Copy, derivative::Derivative)]
+#[derivative(Default)]
+pub struct MoveMode {
+    
+}
+
+#[derive(Debug, Clone, Copy, derivative::Derivative)]
+#[derivative(Default)]
+pub enum CamMode {
     /// Rotate around middle point
-    Rotate,
+    #[derivative(Default)]
+    Rotate(RotateMode),
     /// "First cam" move
-    Move,
+    Move(MoveMode),
 }
 
-impl CamMouseMode {
-    pub fn button(&self) -> MouseButton {
+impl CamMode {
+    pub const ROTATE_BUTTON: MouseButton = MouseButton::Left;
+    pub const MOVE_BUTTON: MouseButton = MouseButton::Right;
+
+    pub fn activation_button(&self) -> MouseButton {
         match self {
-            CamMouseMode::Idle => unreachable!(),
-            CamMouseMode::Rotate => MouseButton::Left,
-            CamMouseMode::Move => MouseButton::Right,
+            CamMode::Rotate(..) => Self::ROTATE_BUTTON,
+            CamMode::Move(..) => Self::MOVE_BUTTON,
         }
     }
 }
 
-#[derive(Component)]
+#[derive(Component, derivative::Derivative)]
+#[derivative(Default)]
 pub struct OrbitCameraComp {
-    pub target: DVec3,
-    pub mouse_mode: CamMouseMode,
+    pub center_translation: DVec3,
+    pub is_mouse_active: bool,
+    pub mode: CamMode,
 
+    #[derivative(Default(value = "10."))]
     pub movement_speed: f64,
-
-    /// Actual pos may be interpolated
-    pub target_translation: DVec3,
-    /// Actual rot may be interpolated
-    pub target_rotation: DQuat,
-}
-
-impl Default for OrbitCameraComp {
-    fn default() -> Self {
-        Self {
-            target: default(),
-            mouse_mode: default(),
-
-            movement_speed: 10.,
-
-            target_translation: default(),
-            target_rotation: default(),
-        }
-    }
 }
 
 fn camera_system(
@@ -79,16 +84,10 @@ fn camera_system(
     let Ok((mut camera_comp, mut camera_transform)) = cam_query.get_single_mut()
     else { return };
 
-    camera_transform.translation = camera_transform.translation.lerp(
-        camera_comp.target_translation, (time.delta_seconds_f64() * 10.).clamp(0., 1.)
-    );
-    camera_transform.rotation = camera_transform.rotation.lerp(
-        camera_comp.target_rotation, (time.delta_seconds_f64() * 10.).clamp(0., 1.)
-    );
+    let mouse_sensitivity = 1. / 300.;
+    let lerp_proportion = time.delta_seconds_f64() * 10.;
 
-    let cam_sensitivity = 1. / 300.;
-
-    {
+    let movement = {
         let forward = camera_transform.forward();
         let left = camera_transform.left();
         let mut movement = DVec3::ZERO;
@@ -104,79 +103,92 @@ fn camera_system(
         if kb_input.pressed(KeyCode::KeyD) {
             movement -= left;
         }
-        let movement_speed = camera_comp.movement_speed;
-        camera_comp.target_translation += movement.normalize_or_zero()
-            * movement_speed * time.delta_seconds_f64();
-    }
+        movement
+    };
+    let mouse_move = mouse_move_events.read()
+        .map(|event| event.delta)
+        .sum::<Vec2>();
 
-    for mwe in mouse_wheel_events.read() {
-        let mut position_relative_to_center = camera_comp.target_translation - camera_comp.target;
-        if mwe.y < 0. {
-            position_relative_to_center *= 0.95;
-        }
-        else if mwe.y > 0. {
-            position_relative_to_center *= 1.05;
-        }
-        camera_comp.target_translation = position_relative_to_center + camera_comp.target;
-    }
+    let scroll = mouse_wheel_events.read()
+        .map(|mwe| mwe.y)
+        .sum::<f32>();
 
-    match camera_comp.mouse_mode {
-        CamMouseMode::Idle => {
-            if mouse_input.pressed(CamMouseMode::Rotate.button()) {
-                camera_comp.mouse_mode = CamMouseMode::Rotate;
-
-                window.cursor.grab_mode = CursorGrabMode::Confined;
-                window.cursor.visible = false;
-
-                return;
-            }
-            if mouse_input.pressed(CamMouseMode::Move.button()) {
-                camera_comp.mouse_mode = CamMouseMode::Move;
-
-                window.cursor.grab_mode = CursorGrabMode::Confined;
-                window.cursor.visible = false;
-
-                return;
+    // mode switch
+    match &camera_comp.mode {
+        CamMode::Rotate(_) => {
+            if mouse_input.pressed(CamMode::MOVE_BUTTON) {
+                camera_comp.mode = CamMode::Move(default());
             }
         },
-        CamMouseMode::Rotate => {
-            if !mouse_input.pressed(CamMouseMode::Rotate.button()) {
-                camera_comp.mouse_mode = CamMouseMode::Idle;
-
-                window.cursor.grab_mode = CursorGrabMode::None;
-                window.cursor.visible = true;
-
-                return;
-            }
-
-            let mut position_relative_to_center = camera_comp.target_translation - camera_comp.target;
-
-            for me in mouse_move_events.read() {
-                let mov = me.delta.as_dvec2() * -cam_sensitivity;
-
-                position_relative_to_center =
-                    DQuat::from_euler(EulerRot::YXZ, mov.x, mov.y, 0.)
-                    * position_relative_to_center;
-            }
-
-            camera_comp.target_translation = position_relative_to_center + camera_comp.target;
-        },
-        CamMouseMode::Move => {
-            if !mouse_input.pressed(CamMouseMode::Move.button()) {
-                camera_comp.mouse_mode = CamMouseMode::Idle;
-
-                window.cursor.grab_mode = CursorGrabMode::None;
-                window.cursor.visible = true;
-
-                return;
-            }
-
-            for me in mouse_move_events.read() {
-                let mov = me.delta.as_dvec2() * -cam_sensitivity;
-
-                camera_transform.rotate_local_y(mov.x);
-                camera_transform.rotate_local_x(mov.y);
+        CamMode::Move(_) => {
+            if mouse_input.pressed(CamMode::ROTATE_BUTTON) {
+                camera_comp.mode = CamMode::Rotate(default());
             }
         },
     }
+
+    camera_comp.is_mouse_active = mouse_input.pressed(
+        camera_comp.mode.activation_button()
+    );
+    if camera_comp.is_mouse_active {
+        window.cursor.grab_mode = CursorGrabMode::Confined;
+        window.cursor.visible = false;
+    }
+    else {
+        window.cursor.grab_mode = CursorGrabMode::None;
+        window.cursor.visible = true;
+    }
+
+    let new_mode = match camera_comp.mode {
+        CamMode::Rotate(mut mode) => {
+            if scroll != 0. {
+                if scroll > 0. {
+                    mode.target_distance *= 1.05;
+                }
+                else {
+                    mode.target_distance *= 0.95;
+                }
+            }
+
+            if camera_comp.is_mouse_active {
+                mode.target_rotation *= DQuat::from_rotation_y(
+                    mouse_move.x as f64 * -mouse_sensitivity
+                );
+                mode.target_rotation *= DQuat::from_rotation_x(
+                    mouse_move.y as f64 * -mouse_sensitivity
+                );
+            }
+
+            mode.distance = mode.distance.lerp(
+                mode.target_distance, 
+                lerp_proportion,
+            );
+            mode.rotation = mode.rotation.lerp(
+                mode.target_rotation, 
+                lerp_proportion,
+            );
+
+            camera_transform.translation = camera_comp.center_translation
+                + (mode.rotation * DVec3::NEG_Z) * mode.distance;
+            let up = camera_transform.up();
+            camera_transform.look_at(
+                camera_comp.center_translation, up
+            );
+
+            CamMode::Rotate(mode)
+        },
+        CamMode::Move(mode) => {
+            if scroll != 0. {
+                if scroll > 0. {
+                    camera_comp.movement_speed *= 1.1;
+                }
+                else {
+                    camera_comp.movement_speed *= 0.9;
+                }
+            }
+
+            CamMode::Move(mode)
+        },
+    };
+    camera_comp.mode = new_mode;
 }

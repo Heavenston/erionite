@@ -7,11 +7,16 @@ edition = "2021"
 bevy = { version = "0.13.2", default-features = false }
 doprec = { version = "0.0.0", path = "../doprec" }
 getset = "0.1.2"
-rapier_overlay = { version = "0.0.0", path = "../rapier_overlay" }
+rapier_overlay = { version = "0.0.0", path = "../rapier_overlay", optional = true }
 utils = { version = "0.0.0", path = "../utils" }
+
+[features]
+rapier = ["rapier_overlay"]
 
 [dev-dependencies]
 bevy = "0.13.2"
+derivative = "2.2.0"
 doprec = { path = "../doprec" }
 log = "0.4.21"
+rand = { version = "0.8.5", features = ["small_rng"] }
 utils = { path = "../utils", features = ["logging"] }

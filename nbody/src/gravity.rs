@@ -1,5 +1,6 @@
 use bevy::{math::DVec3, prelude::*};
 use doprec::GlobalTransform64;
+#[cfg(feature = "rapier")]
 use rapier_overlay::*;
 use utils::Vec3Ext as _;
 
@@ -81,6 +82,7 @@ pub struct Attractor {
 #[derive(Component, Default)]
 pub struct Attracted;
 
+#[cfg(feature = "rapier")]
 pub(crate) fn sync_attractor_masses_with_colliders_system(
     mut query: Query<(
         &ColliderMassComp, &mut Massive
@@ -120,6 +122,7 @@ pub(crate) fn compute_gravity_field_system(
     }
 }
 
+#[cfg(feature = "rapier")]
 pub(crate) fn apply_gravity_to_attracted_rigid_bodies_system(
     mut victims: Query<(
         &Massive, &GravityFieldSample,

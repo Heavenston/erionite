@@ -2565,9 +2565,11 @@ name = "nbody"
 version = "0.0.0"
 dependencies = [
  "bevy",
+ "derivative",
  "doprec",
  "getset",
  "log",
+ "rand",
  "rapier_overlay",
  "utils",
 ]

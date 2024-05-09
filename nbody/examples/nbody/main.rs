@@ -1,8 +1,8 @@
 mod orbit_camera;
 
-use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, math::DVec3, pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*, render::mesh::PlaneMeshBuilder};
+use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, math::DVec3, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}};
 use doprec::{FloatingOrigin, Transform64, Transform64Bundle};
-use rapier_overlay::{rapier::geometry::{Capsule, ColliderBuilder, SharedShape}, ColliderBundle, ColliderMassComp, RapierConfig, RigidBodyBundle};
+use rand::prelude::*;
 
 fn main() {
     utils::logging::setup_basic_logging().unwrap();
@@ -22,17 +22,26 @@ fn main() {
 
         .add_systems(Startup, setup_system)
         .add_systems(Update, update_debug_text_system)
-
-        .insert_resource(DirectionalLightShadowMap { size: 2048 })
-        .insert_resource(RapierConfig {
-            gravity: DVec3::ZERO,
-        })
+        .add_systems(FixedUpdate, (
+            gravity_to_velocities_system,
+            apply_velocities_system,
+        ).chain())
         
         .run();
 }
 
 #[derive(Component, Default)]
 struct DebugTextComp;
+
+#[derive(Component, Default)]
+pub struct Particle {
+    pub radius: f64,
+}
+
+#[derive(Component, Default)]
+pub struct ParticleVelocity {
+    pub velocity: DVec3,
+}
 
 fn setup_system(
     gravity_cfg: Res<nbody::GravityConfig>,
@@ -43,13 +52,47 @@ fn setup_system(
 
     assets: Res<AssetServer>,
 ) {
-    let cam_pos = DVec3::new(0., 3., 0.);
+    let mut rng = SmallRng::from_entropy();
+    let material =  materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        unlit: true,
+        ..default()
+    });
+    for _ in 0..1_000 {
+        let mass = rng.gen_range(1f64..100.);
+        let radius = (3. * mass) / (4. * std::f64::consts::PI);
+
+        let pos = DVec3::new(
+            rng.gen_range(-10_000f64..10_000.),
+            rng.gen_range(-10_000f64..10_000.),
+            rng.gen_range(-10_000f64..10_000.),
+        );
+
+        commands.spawn((
+            Transform64Bundle {
+                local: Transform64::from_translation(pos),
+                ..default()
+            },
+            VisibilityBundle::default(),
+            meshes.add(SphereMeshBuilder::new(radius as f32, SphereKind::Ico {
+                subdivisions: 5,
+            }).build()),
+            material.clone(),
+            Particle {
+                radius,
+            },
+            ParticleVelocity::default(),
+            nbody::GravityFieldSample::default(),
+            nbody::Massive {
+                mass: mass * 1_000f64,
+            },
+            nbody::Attracted,
+            nbody::Attractor::default(),
+        ));
+    }
     
     // camera
     commands.spawn_empty()
-        .insert(ColliderBundle::from(ColliderBuilder::new(SharedShape::new(
-            Capsule::new_y(1., 0.5)
-        )).mass(100.)))
         .insert(Camera3dBundle {
             projection: Projection::Perspective(PerspectiveProjection {
                 fov: 100f32.to_radians(),
@@ -60,10 +103,7 @@ fn setup_system(
         .insert(Transform64Bundle::default())
         .insert((
             FloatingOrigin,
-            orbit_camera::OrbitCameraComp {
-                target_translation: cam_pos,
-                ..default()
-            },
+            orbit_camera::OrbitCameraComp::default(),
         ))
     ;
 
@@ -125,4 +165,28 @@ fn update_debug_text_system(
     {fps:.1} fps - {frame_time:.3} ms/frame\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
     ");
+}
+
+fn gravity_to_velocities_system(
+    time: Res<Time<Fixed>>,
+
+    mut particle_query: Query<(&nbody::GravityFieldSample, &mut ParticleVelocity), With<Particle>>,
+) {
+    for (
+        sample, mut velocity_comp
+    ) in &mut particle_query {
+        velocity_comp.velocity += sample.field_force * time.delta_seconds_f64();
+    }
+}
+
+fn apply_velocities_system(
+    time: Res<Time<Fixed>>,
+
+    mut particle_query: Query<(&mut Transform64, &ParticleVelocity), With<Particle>>,
+) {
+    for (
+        mut transform, velocity_comp
+    ) in &mut particle_query {
+        transform.translation += velocity_comp.velocity * time.delta_seconds_f64();
+    }
 }
