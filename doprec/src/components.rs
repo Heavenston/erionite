@@ -1,7 +1,8 @@
 use std::ops::Mul;
 
 use bevy::prelude::*;
-use bevy::math::{Affine3A, DAffine3, DMat3, DQuat, DVec3};
+use bevy::math::{Affine3A, DAffine3, DQuat, DVec3};
+use utils::DQuatExt;
 
 // TODO: Gather info about why trans / rot / scale is separated for Transform and not
 // for GlobalTransform
@@ -92,17 +93,9 @@ impl Transform64 {
         self.look_to(target - self.translation, up);
     }
 
-    // NOTE: Copy pasted straight from bevy
     /// See bevy's Transform::look_to
     pub fn look_to(&mut self, direction: DVec3, up: DVec3) {
-        let back = -direction.try_normalize().unwrap_or(DVec3::NEG_Z);
-        let up = up.try_normalize().unwrap_or(DVec3::Y);
-        let right = up
-            .cross(back)
-            .try_normalize()
-            .unwrap_or_else(|| up.any_orthonormal_vector());
-        let up = back.cross(right);
-        self.rotation = DQuat::from_mat3(&DMat3::from_cols(right, up, back));
+        self.rotation = DQuat::looking_at(direction, up);
     }
 
     pub fn rotate_local(&mut self, rotation: DQuat) {

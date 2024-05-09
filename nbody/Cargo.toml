@@ -9,3 +9,9 @@ doprec = { version = "0.0.0", path = "../doprec" }
 getset = "0.1.2"
 rapier_overlay = { version = "0.0.0", path = "../rapier_overlay" }
 utils = { version = "0.0.0", path = "../utils" }
+
+[dev-dependencies]
+bevy = "0.13.2"
+doprec = { path = "../doprec" }
+log = "0.4.21"
+utils = { path = "../utils", features = ["logging"] }

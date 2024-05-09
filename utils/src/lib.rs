@@ -10,11 +10,13 @@ mod every_cubes;
 pub use every_cubes::*;
 mod generic_glam;
 pub use generic_glam::*;
+#[cfg(feature = "logging")]
+pub mod logging;
 
 pub use replace_with::replace_with_or_abort as replace_with;
 pub use bimap::BiHashMap;
 
-use bevy_math::{BVec3, UVec3};
+use bevy_math::{BVec3, DMat3, DQuat, DVec3, UVec3};
 use std::{mem::{ManuallyDrop, MaybeUninit}, ops::{Add, Range, Sub}};
 
 /// Copies the content of given arrays into a new bigger array.
@@ -155,5 +157,22 @@ impl<T> RangeExt<T> for Range<T> {
     fn range_sum(&self) -> T
         where T: Add<T, Output = T> + Copy {
         self.start + self.end
+    }
+}
+
+pub trait DQuatExt {
+    fn looking_at(direction: DVec3, up: DVec3) -> DQuat;
+}
+
+impl DQuatExt for DQuat {
+    fn looking_at(direction: DVec3, up: DVec3) -> DQuat {
+        let back = -direction.try_normalize().unwrap_or(DVec3::NEG_Z);
+        let up = up.try_normalize().unwrap_or(DVec3::Y);
+        let right = up
+            .cross(back)
+            .try_normalize()
+            .unwrap_or_else(|| up.any_orthonormal_vector());
+        let up = back.cross(right);
+        DQuat::from_mat3(&DMat3::from_cols(right, up, back))
     }
 }

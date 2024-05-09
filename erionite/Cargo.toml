@@ -18,4 +18,4 @@ rand = { version = "0.8.5", features = ["small_rng"] }
 rapier_overlay = { version = "0.0.0", path = "../rapier_overlay" }
 rayon = "1.10.0"
 svo = { version = "*", path = "../svo" }
-utils = { version = "*", path = "../utils" }
+utils = { version = "0.0.0", path = "../utils", features = ["logging"] }

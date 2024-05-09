@@ -10,3 +10,8 @@ bevy_render = "0.13.2"
 bimap = "0.6.3"
 num-traits = "0.2.18"
 replace_with = "0.1.7"
+log = { version = "0.4.21", optional = true }
+fern = { version = "0.6.2", features = ["colored"], optional = true }
+
+[features]
+logging = ["log", "fern"]

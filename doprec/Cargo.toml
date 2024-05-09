@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 bevy = { version = "0.13.2", default-features = false }
 log = "0.4.21"
+utils = { version = "0.0.0", path = "../utils" }
