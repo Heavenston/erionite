@@ -1,4 +1,6 @@
-use bevy::{math::DVec3, prelude::*};
+use std::time::Instant;
+
+use bevy::{diagnostic::{DiagnosticPath, Diagnostics, DiagnosticsStore}, math::DVec3, prelude::*};
 use doprec::GlobalTransform64;
 #[cfg(feature = "rapier")]
 use rapier_overlay::*;
@@ -96,12 +98,18 @@ pub(crate) fn sync_attractor_masses_with_colliders_system(
     }
 }
 
+pub const GRAVITY_COMPUTE_SYSTEM_DURATION: DiagnosticPath =
+    DiagnosticPath::const_new("gravity_compute");
+
 pub(crate) fn compute_gravity_field_system(
+    mut diagnostics: Diagnostics,
     cfg: Res<GravityConfig>,
 
     attractors: Query<(Entity, &GlobalTransform64, &Massive, &Attractor)>,
     mut victims: Query<(Entity, &GlobalTransform64, &mut GravityFieldSample)>,
 ) {
+    let start = Instant::now();
+
     for (victim_entity, victim_pos, mut victim_sample) in &mut victims {
         let mut total_force = DVec3::ZERO;
 
@@ -120,6 +128,11 @@ pub(crate) fn compute_gravity_field_system(
 
         victim_sample.field_force = total_force;
     }
+
+    diagnostics.add_measurement(
+        &GRAVITY_COMPUTE_SYSTEM_DURATION,
+        || start.elapsed().as_millis_f64(),
+    );
 }
 
 #[cfg(feature = "rapier")]

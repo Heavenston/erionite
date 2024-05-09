@@ -1,5 +1,5 @@
 use crate::*;
-use bevy::prelude::*;
+use bevy::{diagnostic::{Diagnostic, RegisterDiagnostic}, prelude::*};
 
 #[derive(Default)]
 pub struct NBodyPlugin {
@@ -17,6 +17,11 @@ impl Plugin for NBodyPlugin {
             apply_gravity_to_attracted_rigid_bodies_system,
         ).chain().after(doprec::TransformSystems));
 
+        app.register_diagnostic(
+            Diagnostic::new(GRAVITY_COMPUTE_SYSTEM_DURATION)
+                .with_suffix(" ms")
+        );
+ 
         app.init_resource::<GravityConfig>();
     }
 }

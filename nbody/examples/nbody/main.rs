@@ -157,12 +157,16 @@ fn update_debug_text_system(
         .and_then(|diag| diag.smoothed())
         .unwrap_or(0.);
 
+    let grav_compute_duration = diagnostics.get(&nbody::GRAVITY_COMPUTE_SYSTEM_DURATION)
+        .and_then(|diag| diag.smoothed())
+        .unwrap_or(0.);
+
     let cam_pos = cam_transform.translation;
     let cam_speed = orbit_cam.movement_speed;
 
     let mut debug_text = debug_text.single_mut();
     debug_text.sections[0].value = format!("\
-    {fps:.1} fps - {frame_time:.3} ms/frame\n\
+    {fps:.1} fps - {frame_time:.3} ms/frame - {grav_compute_duration:.3} ms for gravity compute\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
     ");
 }
