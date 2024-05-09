@@ -15,7 +15,7 @@ use rapier::{dynamics::RigidBodyType, geometry::{Capsule, ColliderBuilder, Share
 use rapier_overlay::*;
 
 fn main() {
-    utils::logging::setup_basic_logger().unwrap();
+    utils::logging::setup_basic_logging().unwrap();
 
     App::new()
         .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin)

@@ -87,24 +87,24 @@ fn camera_system(
     let mouse_sensitivity = 1. / 300.;
     let lerp_proportion = time.delta_seconds_f64() * 10.;
 
-    let movement = {
-        let forward = camera_transform.forward();
-        let left = camera_transform.left();
-        let mut movement = DVec3::ZERO;
-        if kb_input.pressed(KeyCode::KeyW) || kb_input.pressed(KeyCode::KeyZ) {
-            movement += forward;
-        }
-        if kb_input.pressed(KeyCode::KeyS) {
-            movement -= forward;
-        }
-        if kb_input.pressed(KeyCode::KeyA) || kb_input.pressed(KeyCode::KeyQ) {
-            movement += left;
-        }
-        if kb_input.pressed(KeyCode::KeyD) {
-            movement -= left;
-        }
-        movement
-    };
+    // let movement = {
+    //     let forward = camera_transform.forward();
+    //     let left = camera_transform.left();
+    //     let mut movement = DVec3::ZERO;
+    //     if kb_input.pressed(KeyCode::KeyW) || kb_input.pressed(KeyCode::KeyZ) {
+    //         movement += forward;
+    //     }
+    //     if kb_input.pressed(KeyCode::KeyS) {
+    //         movement -= forward;
+    //     }
+    //     if kb_input.pressed(KeyCode::KeyA) || kb_input.pressed(KeyCode::KeyQ) {
+    //         movement += left;
+    //     }
+    //     if kb_input.pressed(KeyCode::KeyD) {
+    //         movement -= left;
+    //     }
+    //     movement
+    // };
     let mouse_move = mouse_move_events.read()
         .map(|event| event.delta)
         .sum::<Vec2>();

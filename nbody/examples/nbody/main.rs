@@ -44,13 +44,9 @@ pub struct ParticleVelocity {
 }
 
 fn setup_system(
-    gravity_cfg: Res<nbody::GravityConfig>,
-
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
-
-    assets: Res<AssetServer>,
 ) {
     let mut rng = SmallRng::from_entropy();
     let material =  materials.add(StandardMaterial {
