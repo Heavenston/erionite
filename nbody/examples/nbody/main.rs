@@ -21,12 +21,14 @@ fn main() {
         ))
 
         .add_systems(Startup, setup_system)
-        .add_systems(Update, update_debug_text_system)
+        .add_systems(Update, (
+            update_debug_text_system,
+        ))
         .add_systems(FixedUpdate, (
             particle_merge_system,
             gravity_to_velocities_system,
             apply_velocities_system,
-        ).chain())
+        ).chain().after(nbody::GravitySystems))
         
         .run();
 }
@@ -105,28 +107,21 @@ fn setup_system(
             emissive: Color::WHITE,
             ..default()
         }),
-        density: 10f64,
+        density: 1_000f64,
     };
     commands.insert_resource(cfg.clone());
     
-    // for _ in 0..2_000 {
-    //     let mass = rng.gen_range(1_000f64..100_000.);
+    for _ in 0..2_000 {
+        let mass = rng.gen_range(1_000f64..100_000.);
 
-    //     let pos = DVec3::new(
-    //         rng.gen_range(-10_000f64..10_000.),
-    //         rng.gen_range(-10_000f64..10_000.),
-    //         rng.gen_range(-10_000f64..10_000.),
-    //     );
+        let pos = DVec3::new(
+            rng.gen_range(-10_000f64..10_000.),
+            rng.gen_range(-10_000f64..10_000.),
+            rng.gen_range(-10_000f64..10_000.),
+        );
 
-    //     commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, pos));
-    // }
-    let mass = 10.;
-    commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, DVec3::new(
-        -10., 0., 0.
-    )));
-    commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, DVec3::new(
-        10., 0., 0.
-    )));
+        commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, pos));
+    }
 
     commands.insert_resource(AmbientLight {
         color: Color::WHITE,
@@ -265,11 +260,10 @@ fn gravity_to_velocities_system(
 
     mut particle_query: Query<(&nbody::GravityFieldSample, &mut ParticleVelocity), With<Particle>>,
 ) {
-    for (
-        sample, mut velocity_comp
-    ) in &mut particle_query {
-        velocity_comp.velocity += sample.field_force * time.delta_seconds_f64();
-    }
+    particle_query.par_iter_mut()
+        .for_each(|(sample, mut velocity_comp)| {
+            velocity_comp.velocity += sample.field_force * time.delta_seconds_f64();
+        })
 }
 
 fn apply_velocities_system(
@@ -277,9 +271,8 @@ fn apply_velocities_system(
 
     mut particle_query: Query<(&mut Transform64, &ParticleVelocity), With<Particle>>,
 ) {
-    for (
-        mut transform, velocity_comp
-    ) in &mut particle_query {
-        transform.translation += velocity_comp.velocity * time.delta_seconds_f64();
-    }
+    particle_query.par_iter_mut()
+        .for_each(|(mut transform, velocity_comp)| {
+            transform.translation += velocity_comp.velocity * time.delta_seconds_f64();
+        });
 }

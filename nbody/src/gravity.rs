@@ -6,6 +6,9 @@ use doprec::GlobalTransform64;
 use rapier_overlay::*;
 use utils::Vec3Ext as _;
 
+#[derive(SystemSet, Debug, PartialEq, Eq, Default, Hash, Clone, Copy)]
+pub struct GravitySystems;
+
 #[derive(Resource)]
 pub struct GravityConfig {
     pub gravity_contant: f64,
