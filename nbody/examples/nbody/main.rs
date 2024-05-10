@@ -25,7 +25,10 @@ fn main() {
                 .disable::<bevy::transform::TransformPlugin>()
                 .disable::<bevy::log::LogPlugin>(),
             doprec::DoprecPlugin::default(),
-            nbody::NBodyPlugin::default(),
+            nbody::NBodyPlugin {
+                enable_svo: true,
+                ..nbody::NBodyPlugin::default()
+            },
             orbit_camera::OrbitCameraPlugin::default(),
         ))
 
@@ -221,6 +224,9 @@ fn update_debug_text_system(
     let grav_compute_duration = diagnostics.get(&nbody::GRAVITY_COMPUTE_SYSTEM_DURATION)
         .and_then(|diag| diag.smoothed())
         .unwrap_or(0.);
+    let svo_update_duration = diagnostics.get(&nbody::GRAVITY_SVO_UPDATE_SYSTEM_DURATION)
+        .and_then(|diag| diag.smoothed())
+        .unwrap_or(0.);
     let collision_compute_duration = diagnostics.get(&COLLISION_DIAG)
         .and_then(|diag| diag.smoothed())
         .unwrap_or(0.);
@@ -233,6 +239,7 @@ fn update_debug_text_system(
     let mut debug_text = debug_text.single_mut();
     debug_text.sections[0].value = format!("\
     {fps:.1} fps - {frame_time:.3} ms/frame\n\
+    - Svo update: {svo_update_duration:.3} ms\n\
     - Gravity compute: {grav_compute_duration:.3} ms\n\
     - Collision detection: {collision_compute_duration:.3} ms\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\

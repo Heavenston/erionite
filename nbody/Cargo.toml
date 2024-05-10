@@ -4,11 +4,14 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
+arbitrary-int = "1.2.7"
 bevy = { version = "0.13.2", default-features = false }
 derivative = "2.2.0"
 doprec = { version = "0.0.0", path = "../doprec" }
+either = "1.11.0"
 getset = "0.1.2"
 rapier_overlay = { version = "0.0.0", path = "../rapier_overlay", optional = true }
+svo = { version = "0.0.0", path = "../svo" }
 utils = { version = "0.0.0", path = "../utils" }
 
 [features]

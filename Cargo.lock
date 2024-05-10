@@ -1629,9 +1629,9 @@ checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 
 [[package]]
 name = "either"
-version = "1.10.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11157ac094ffbdde99aa67b23417ebdd801842852b500e395a45a9c0aac03e4a"
+checksum = "a47c1c47d2f5964e29c61246e81db715514cd532db6b5116a25ea3c03d6780a2"
 
 [[package]]
 name = "encase"
@@ -2564,13 +2564,16 @@ dependencies = [
 name = "nbody"
 version = "0.0.0"
 dependencies = [
+ "arbitrary-int",
  "bevy",
  "derivative",
  "doprec",
+ "either",
  "getset",
  "log",
  "rand",
  "rapier_overlay",
+ "svo",
  "utils",
 ]
 
