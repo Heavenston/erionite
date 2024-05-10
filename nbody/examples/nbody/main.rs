@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use bevy::{diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic}, math::DVec3, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, time::common_conditions::on_timer, utils::HashSet};
 use doprec::{FloatingOrigin, Transform64, Transform64Bundle};
 use rand::prelude::*;
-use utils::Vec3Ext;
+use utils::{IsZeroApprox, Vec3Ext};
 
 const COLLISION_DIAG: DiagnosticPath = DiagnosticPath::const_new("collision_compute");
 const VELOCITY_DIAG: DiagnosticPath = DiagnosticPath::const_new("velocity_compute");
@@ -39,8 +39,9 @@ fn main() {
 
         .add_systems(Startup, setup_system)
         .add_systems(Update, (
-            update_debug_text_system.run_if(on_timer(Duration::from_millis(500))),
-        ))
+            update_particles_colors,
+            update_debug_text_system,
+        ).run_if(on_timer(Duration::from_millis(100))))
         .add_systems(FixedUpdate, (
             particle_merge_system,
             (
@@ -89,9 +90,11 @@ impl ParticleBundle {
     pub fn new(
         cfg: &ParticleConfig,
         meshes: &mut Assets<Mesh>,
+        materials: &mut Assets<StandardMaterial>,
         mass: f64, pos: DVec3
     ) -> Self {
         let radius = (3. * (mass / cfg.density)) / (4. * std::f64::consts::PI);
+        let material = materials.add(materials.get(&cfg.material).unwrap().clone());
 
         Self {
             transform: Transform64Bundle {
@@ -102,7 +105,7 @@ impl ParticleBundle {
             mesh: meshes.add(SphereMeshBuilder::new(radius as f32, SphereKind::Ico {
                 subdivisions: 5,
             }).build()),
-            material: cfg.material.clone(),
+            material,
             particle: Particle { radius },
             velocity: default(),
             gravity_field_sample: default(),
@@ -122,8 +125,8 @@ fn setup_system(
 
     let cfg = ParticleConfig {
         material: materials.add(StandardMaterial {
-            base_color: Color::WHITE,
-            emissive: Color::WHITE,
+            base_color: Color::RED,
+            unlit: true,
             ..default()
         }),
         density: 1_000f64,
@@ -139,19 +142,21 @@ fn setup_system(
             rng.gen_range(-10_000f64..10_000.),
         );
 
-        commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, pos));
+        commands.spawn(ParticleBundle::new(
+            &cfg, &mut *meshes, &mut *materials, mass, pos
+        ));
     }
     // let mass = 1_000f64;
-    // commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, DVec3::new(
+    // commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, &mut *materials, mass, DVec3::new(
     //     -10., 0., 0.,
     // )));
-    // commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, DVec3::new(
+    // commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, &mut *materials, mass, DVec3::new(
     //     10., 0., 0.,
     // )));
 
     commands.insert_resource(AmbientLight {
         color: Color::WHITE,
-        brightness: 100_000.,
+        brightness: 1_000.,
     });
     
     // camera
@@ -247,10 +252,38 @@ fn update_debug_text_system(
     ");
 }
 
+fn update_particles_colors(
+    mut materials: ResMut<Assets<StandardMaterial>>,
+
+    mut particle_query: Query<(&nbody::Attractor, &mut Handle<StandardMaterial>), With<Particle>>,
+) {
+    let min_color = Color::YELLOW.rgba_linear_to_vec4();
+    let max_color = Color::RED.rgba_linear_to_vec4();
+
+    let max_depth = particle_query.iter()
+        .filter_map(|par| par.0.last_svo_position.as_ref().map(|p| p.depth()))
+        .max().unwrap_or_default();
+
+    for (attractor, mut material_handle) in &mut particle_query {
+        let depth = attractor.last_svo_position.as_ref()
+            .map(|p| p.depth()).unwrap_or(0);
+        let prop = depth as f32 / max_depth as f32;
+
+        let color = Color::rgba_linear_from_array(
+            min_color * (1. - prop) + max_color * prop
+        );
+
+        material_handle.set_changed();
+        let material = materials.get_mut(&*material_handle).unwrap();
+        material.base_color = color;
+    }
+}
+
 fn particle_merge_system(
     mut diagnostics: Diagnostics,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     time: Res<Time<Fixed>>,
 
     cfg: Res<ParticleConfig>,
@@ -277,6 +310,10 @@ fn particle_merge_system(
 
         let dp = transform.translation - other_transform.translation;
         let dv = velocity_comp.velocity - other_velocity_comp.velocity;
+
+        if dv.is_zero_approx() {
+            continue;
+        }
 
         let closest_approach_time =
             -(dp * dv).array().into_iter().sum::<f64>() /
@@ -307,7 +344,7 @@ fn particle_merge_system(
 
         commands.spawn(ParticleBundle {
             velocity: ParticleVelocity { velocity },
-            ..ParticleBundle::new(&cfg, &mut *meshes, mass, pos)
+            ..ParticleBundle::new(&cfg, &mut *meshes, &mut *materials, mass, pos)
         });
     }
 

@@ -5,7 +5,7 @@ use doprec::GlobalTransform64;
 #[cfg(feature = "rapier")]
 use rapier_overlay::*;
 use svo::AggregateData;
-use utils::{AsVecExt, DAabb, Vec3Ext as _};
+use utils::{AsVecExt, DAabb, IsZeroApprox, Vec3Ext as _};
 use either::Either;
 use arbitrary_int::*;
 
@@ -95,7 +95,7 @@ impl svo::AggregateData for SvoData {
 impl svo::SplittableData for SvoData {
     fn should_auto_split(&self) -> bool {
         self.remaining_allowed_depth > 0 &&
-        self.entities.len() > 50
+        self.entities.len() > 10
     }
 
     fn split(self) -> (Self::Internal, [Self; 8]) {
@@ -131,7 +131,7 @@ impl svo::MergeableData for SvoData {
         this: &Self::Internal,
         _children: [&Self; 8]
     ) -> bool {
-        this.count <= 20
+        this.count <= 5
     }
 
     fn merge(
@@ -326,6 +326,9 @@ pub(crate) fn compute_gravity_field_system(
                 }
 
                 let diff = attractor_pos.translation() - victim_pos.translation();
+                if diff.is_zero_approx() {
+                    continue;
+                }
                 let squared_distance = diff.length_squared();
                 let force = attractor_mass.mass / squared_distance;
 
