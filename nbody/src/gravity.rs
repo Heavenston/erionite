@@ -170,7 +170,7 @@ pub(crate) fn compute_gravity_field_system(
                     strongest = Some(attractor_info);
                 }
                 if closest
-                    .map(|s| s.squared_distance < attractor_info.squared_distance)
+                    .map(|s| s.squared_distance > attractor_info.squared_distance)
                     .unwrap_or(true)
                 {
                     closest = Some(attractor_info);

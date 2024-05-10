@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use bevy::{diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic}, math::DVec3, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, time::common_conditions::on_timer, utils::HashSet};
 use doprec::{FloatingOrigin, Transform64, Transform64Bundle};
 use rand::prelude::*;
+use utils::Vec3Ext;
 
 const COLLISION_DIAG: DiagnosticPath = DiagnosticPath::const_new("collision_compute");
 const VELOCITY_DIAG: DiagnosticPath = DiagnosticPath::const_new("velocity_compute");
@@ -126,7 +127,7 @@ fn setup_system(
     };
     commands.insert_resource(cfg.clone());
     
-    for _ in 0..1_000 {
+    for _ in 0..1_500 {
         let mass = rng.gen_range(1_000f64..100_000.);
 
         let pos = DVec3::new(
@@ -137,6 +138,13 @@ fn setup_system(
 
         commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, pos));
     }
+    // let mass = 1_000f64;
+    // commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, DVec3::new(
+    //     -10., 0., 0.,
+    // )));
+    // commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, DVec3::new(
+    //     10., 0., 0.,
+    // )));
 
     commands.insert_resource(AmbientLight {
         color: Color::WHITE,
@@ -236,6 +244,7 @@ fn particle_merge_system(
     mut diagnostics: Diagnostics,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
+    time: Res<Time<Fixed>>,
 
     cfg: Res<ParticleConfig>,
 
@@ -259,9 +268,23 @@ fn particle_merge_system(
         )) = particle_query.get(closest.entity)
         else { continue; };
 
-        let sumed_radius = particle_comp.radius + other_particle_comp.radius;
+        let dp = transform.translation - other_transform.translation;
+        let dv = velocity_comp.velocity - other_velocity_comp.velocity;
 
-        if sumed_radius.powi(2) < closest.squared_distance {
+        let closest_approach_time =
+            -(dp * dv).array().into_iter().sum::<f64>() /
+            dv.array().into_iter().map(|x| x*x).sum::<f64>();
+
+        let closest_approach_time = closest_approach_time.clamp(
+            -time.delta_seconds_f64(),
+            time.delta_seconds_f64(),
+        );
+
+        let closest_distance_squared = (dp + closest_approach_time * dv).length_squared();
+
+        let sumed_radius = (particle_comp.radius + other_particle_comp.radius) / 2.;
+
+        if sumed_radius.powi(2) < closest_distance_squared {
             // no collision
             continue;
         }
