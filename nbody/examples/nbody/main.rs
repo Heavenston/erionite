@@ -1,6 +1,6 @@
 mod orbit_camera;
 
-use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, math::DVec3, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}};
+use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, math::DVec3, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, utils::HashSet};
 use doprec::{FloatingOrigin, Transform64, Transform64Bundle};
 use rand::prelude::*;
 
@@ -23,6 +23,7 @@ fn main() {
         .add_systems(Startup, setup_system)
         .add_systems(Update, update_debug_text_system)
         .add_systems(FixedUpdate, (
+            particle_merge_system,
             gravity_to_velocities_system,
             apply_velocities_system,
         ).chain())
@@ -30,17 +31,65 @@ fn main() {
         .run();
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq)]
 struct DebugTextComp;
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq)]
 pub struct Particle {
     pub radius: f64,
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq)]
 pub struct ParticleVelocity {
     pub velocity: DVec3,
+}
+
+#[derive(Resource, Debug, Clone)]
+pub struct ParticleConfig {
+    pub material: Handle<StandardMaterial>,
+    pub density: f64,
+}
+
+#[derive(Bundle, Debug)]
+pub struct ParticleBundle {
+    transform: Transform64Bundle,
+    visibility: VisibilityBundle,
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+    particle: Particle,
+    velocity: ParticleVelocity,
+    gravity_field_sample: nbody::GravityFieldSample,
+    massive: nbody::Massive,
+    attracted: nbody::Attracted,
+    attractor: nbody::Attractor,
+}
+
+impl ParticleBundle {
+    pub fn new(
+        cfg: &ParticleConfig,
+        meshes: &mut Assets<Mesh>,
+        mass: f64, pos: DVec3
+    ) -> Self {
+        let radius = (3. * (mass / cfg.density)) / (4. * std::f64::consts::PI);
+
+        Self {
+            transform: Transform64Bundle {
+                local: Transform64::from_translation(pos),
+                ..default()
+            },
+            visibility: default(),
+            mesh: meshes.add(SphereMeshBuilder::new(radius as f32, SphereKind::Ico {
+                subdivisions: 5,
+            }).build()),
+            material: cfg.material.clone(),
+            particle: Particle { radius },
+            velocity: default(),
+            gravity_field_sample: default(),
+            massive: nbody::Massive { mass },
+            attracted: default(),
+            attractor: default(),
+        }
+    }
 }
 
 fn setup_system(
@@ -49,43 +98,40 @@ fn setup_system(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let mut rng = SmallRng::from_entropy();
-    let material =  materials.add(StandardMaterial {
-        base_color: Color::WHITE,
-        unlit: true,
-        ..default()
+
+    let cfg = ParticleConfig {
+        material: materials.add(StandardMaterial {
+            base_color: Color::WHITE,
+            emissive: Color::WHITE,
+            ..default()
+        }),
+        density: 10f64,
+    };
+    commands.insert_resource(cfg.clone());
+    
+    // for _ in 0..2_000 {
+    //     let mass = rng.gen_range(1_000f64..100_000.);
+
+    //     let pos = DVec3::new(
+    //         rng.gen_range(-10_000f64..10_000.),
+    //         rng.gen_range(-10_000f64..10_000.),
+    //         rng.gen_range(-10_000f64..10_000.),
+    //     );
+
+    //     commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, pos));
+    // }
+    let mass = 10.;
+    commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, DVec3::new(
+        -10., 0., 0.
+    )));
+    commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, mass, DVec3::new(
+        10., 0., 0.
+    )));
+
+    commands.insert_resource(AmbientLight {
+        color: Color::WHITE,
+        brightness: 100_000.,
     });
-    for _ in 0..2_000 {
-        let mass = rng.gen_range(1f64..100.);
-        let radius = (3. * mass) / (4. * std::f64::consts::PI);
-
-        let pos = DVec3::new(
-            rng.gen_range(-10_000f64..10_000.),
-            rng.gen_range(-10_000f64..10_000.),
-            rng.gen_range(-10_000f64..10_000.),
-        );
-
-        commands.spawn((
-            Transform64Bundle {
-                local: Transform64::from_translation(pos),
-                ..default()
-            },
-            VisibilityBundle::default(),
-            meshes.add(SphereMeshBuilder::new(radius as f32, SphereKind::Ico {
-                subdivisions: 5,
-            }).build()),
-            material.clone(),
-            Particle {
-                radius,
-            },
-            ParticleVelocity::default(),
-            nbody::GravityFieldSample::default(),
-            nbody::Massive {
-                mass: mass * 1_000f64,
-            },
-            nbody::Attracted::default(),
-            nbody::Attractor::default(),
-        ));
-    }
     
     // camera
     commands.spawn_empty()
@@ -165,6 +211,53 @@ fn update_debug_text_system(
     {fps:.1} fps - {frame_time:.3} ms/frame - {grav_compute_duration:.3} ms for gravity compute\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
     ");
+}
+
+fn particle_merge_system(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+
+    cfg: Res<ParticleConfig>,
+
+    particle_query: Query<(Entity, &Transform64, &ParticleVelocity, &nbody::Attracted, &nbody::Massive, &Particle)>,
+) {
+    let mut destroyed = HashSet::<Entity>::new();
+    for (
+        entity, transform, velocity_comp, attracted_comp, massive_comp, particle_comp,
+    ) in &particle_query {
+        let Some(closest) = attracted_comp.closest_attractor()
+        else { continue; };
+
+        if destroyed.contains(&entity) || destroyed.contains(&closest.entity) {
+            continue;
+        }
+
+        let Ok((
+            _other_entity, other_transform, other_velocity_comp, _other_attracted_comp, other_massive_comp, other_particle_comp,
+        )) = particle_query.get(closest.entity)
+        else { continue; };
+
+        let sumed_radius = particle_comp.radius + other_particle_comp.radius;
+
+        if sumed_radius.powi(2) < closest.squared_distance {
+            // no collision
+            continue;
+        }
+
+        destroyed.insert(entity);
+        commands.entity(entity).despawn();
+        destroyed.insert(closest.entity);
+        commands.entity(closest.entity).despawn();
+
+        let pos = (transform.translation + other_transform.translation) / 2.;
+        let mass = massive_comp.mass + other_massive_comp.mass;
+        let velocity = velocity_comp.velocity + other_velocity_comp.velocity;
+
+        commands.spawn(ParticleBundle {
+            velocity: ParticleVelocity { velocity },
+            ..ParticleBundle::new(&cfg, &mut *meshes, mass, pos)
+        });
+    }
 }
 
 fn gravity_to_velocities_system(

@@ -8,7 +8,7 @@ use utils::DQuatExt;
 // for GlobalTransform
 // (there are bevy issues (and rfcs?) about it)
 
-#[derive(Bundle, Default)]
+#[derive(Bundle, Debug, Default, Clone, Copy)]
 pub struct Transform64Bundle {
     pub local: Transform64,
     pub global: GlobalTransform64,

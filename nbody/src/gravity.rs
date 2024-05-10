@@ -19,7 +19,7 @@ impl Default for GravityConfig {
     }
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq)]
 pub struct Massive {
     pub mass: f64,
 }
@@ -28,13 +28,13 @@ pub struct Massive {
 /// total gravital force of all Attractors on its position.
 ///
 /// Actual gravity force applied on body should be field_force * body_mass
-#[derive(getset::CopyGetters, Component, Default)]
+#[derive(getset::CopyGetters, Component, Debug, Default, PartialEq, Clone, Copy)]
 #[getset(get_copy = "pub")]
 pub struct GravityFieldSample {
     pub field_force: DVec3,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq)]
 pub struct GravityFieldComputeInfo {
     pub attractors_mass: f64,
     /// Attractor's position relative to the sample point
@@ -43,7 +43,8 @@ pub struct GravityFieldComputeInfo {
     pub squared_distance: f64,
 }
 
-#[derive(Default)]
+#[derive(Default, derivative::Derivative)]
+#[derivative(Debug)]
 pub enum GravityFunction {
     Linear,
     #[default]
@@ -52,6 +53,7 @@ pub enum GravityFunction {
     Custom {
         /// result value is mutliplied by the gravitational constant to get
         /// the final force's vector norm
+        #[derivative(Debug = "ignore")]
         function: Box<dyn Fn(&GravityFieldComputeInfo) -> f64 + Send + Sync>,
     }
 }
@@ -84,9 +86,9 @@ impl GravityFunction {
     }
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Debug, Default)]
 pub struct Attractor {
-    pub function: GravityFunction,    
+    pub function: GravityFunction,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -96,7 +98,7 @@ pub struct AttractorInfo {
     pub squared_distance: f64,
 }
 
-#[derive(getset::CopyGetters, Component, Default)]
+#[derive(getset::CopyGetters, Component, Debug, Default, Clone, Copy)]
 #[getset(get_copy = "pub")]
 pub struct Attracted {
     // TODO: Consider adding a generic or dyn abstraction to add any other
