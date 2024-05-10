@@ -307,6 +307,18 @@ impl CellPath {
         self
     }
 
+    pub fn is_prefix_of(&self, other: &Self) -> bool {
+        let self_bit = self.mark_bit_position();
+        let other_bit = other.mark_bit_position();
+        if self_bit > other_bit {
+            return false;
+        }
+
+        let smaller_other = other.0 >> (other_bit - self_bit);
+
+        smaller_other == self.0
+    }
+
     pub fn in_unit_cube<T>(depth: u32, mut coords: T::Vec3) -> Option<Self>
         where T: GlamFloat
     {
@@ -766,5 +778,20 @@ mod tests {
                 u3::new(0b101),
             ],
         );
+    }
+
+    #[test]
+    fn test_is_prefix_of() {
+        assert!(CellPath(0b1).is_prefix_of(&CellPath(0b1)));
+        assert!(!CellPath(0b1_000).is_prefix_of(&CellPath(0b1)));
+        assert!(CellPath(0b1_000).is_prefix_of(&CellPath(0b1_000)));
+        assert!(CellPath(0b1_000).is_prefix_of(&CellPath(0b1_000_000)));
+        assert!(CellPath(0b1_000).is_prefix_of(&CellPath(0b1_000_010)));
+        assert!(CellPath(0b1_000).is_prefix_of(&CellPath(0b1_000_011)));
+        assert!(CellPath(0b1_100).is_prefix_of(&CellPath(0b1_100_011)));
+        assert!(!CellPath(0b1_100_011_000).is_prefix_of(&CellPath(0b1_100_011)));
+        assert!(CellPath(0b1_100_011_111).is_prefix_of(&CellPath(0b1_100_011_111)));
+        assert!(CellPath(0b1_100_011_111).is_prefix_of(&CellPath(0b1_100_011_111_000)));
+        assert!(CellPath(0b1_100_011_111).is_prefix_of(&CellPath(0b1_100_011_111_000_000)));
     }
 }
