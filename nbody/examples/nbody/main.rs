@@ -1,8 +1,16 @@
+#![feature(duration_millis_float)]
+
 mod orbit_camera;
 
-use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, math::DVec3, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, utils::HashSet};
+use std::time::{Duration, Instant};
+
+use bevy::{diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic}, math::DVec3, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, time::common_conditions::on_timer, utils::HashSet};
 use doprec::{FloatingOrigin, Transform64, Transform64Bundle};
 use rand::prelude::*;
+
+const COLLISION_DIAG: DiagnosticPath = DiagnosticPath::const_new("collision_compute");
+const VELOCITY_DIAG: DiagnosticPath = DiagnosticPath::const_new("velocity_compute");
+const MOVE_DIAG: DiagnosticPath = DiagnosticPath::const_new("move_compute");
 
 fn main() {
     utils::logging::setup_basic_logging().unwrap();
@@ -20,15 +28,22 @@ fn main() {
             orbit_camera::OrbitCameraPlugin::default(),
         ))
 
+        .register_diagnostic(
+            Diagnostic::new(COLLISION_DIAG)
+                .with_suffix(" ms")
+        )
+
         .add_systems(Startup, setup_system)
         .add_systems(Update, (
-            update_debug_text_system,
+            update_debug_text_system.run_if(on_timer(Duration::from_millis(500))),
         ))
         .add_systems(FixedUpdate, (
             particle_merge_system,
-            gravity_to_velocities_system,
-            apply_velocities_system,
-        ).chain().after(nbody::GravitySystems))
+            (
+                gravity_to_velocities_system,
+                apply_velocities_system,
+            ).chain(),
+        ).after(nbody::GravitySystems))
         
         .run();
 }
@@ -111,7 +126,7 @@ fn setup_system(
     };
     commands.insert_resource(cfg.clone());
     
-    for _ in 0..2_000 {
+    for _ in 0..1_000 {
         let mass = rng.gen_range(1_000f64..100_000.);
 
         let pos = DVec3::new(
@@ -182,6 +197,7 @@ fn update_debug_text_system(
     diagnostics: Res<DiagnosticsStore>,
 
     cam_query: Query<(&Transform64, &orbit_camera::OrbitCameraComp)>,
+    particles_query: Query<(), With<Particle>>,
 
     mut debug_text: Query<&mut Text, With<DebugTextComp>>,
 ) {
@@ -197,18 +213,27 @@ fn update_debug_text_system(
     let grav_compute_duration = diagnostics.get(&nbody::GRAVITY_COMPUTE_SYSTEM_DURATION)
         .and_then(|diag| diag.smoothed())
         .unwrap_or(0.);
+    let collision_compute_duration = diagnostics.get(&COLLISION_DIAG)
+        .and_then(|diag| diag.smoothed())
+        .unwrap_or(0.);
 
     let cam_pos = cam_transform.translation;
     let cam_speed = orbit_cam.movement_speed;
 
+    let particle_count = particles_query.iter().count();
+
     let mut debug_text = debug_text.single_mut();
     debug_text.sections[0].value = format!("\
-    {fps:.1} fps - {frame_time:.3} ms/frame - {grav_compute_duration:.3} ms for gravity compute\n\
+    {fps:.1} fps - {frame_time:.3} ms/frame\n\
+    - Gravity compute: {grav_compute_duration:.3} ms\n\
+    - Collision detection: {collision_compute_duration:.3} ms\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
+    Particles: cout {particle_count}\n\
     ");
 }
 
 fn particle_merge_system(
+    mut diagnostics: Diagnostics,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
 
@@ -216,7 +241,9 @@ fn particle_merge_system(
 
     particle_query: Query<(Entity, &Transform64, &ParticleVelocity, &nbody::Attracted, &nbody::Massive, &Particle)>,
 ) {
+    let start = Instant::now();
     let mut destroyed = HashSet::<Entity>::new();
+
     for (
         entity, transform, velocity_comp, attracted_comp, massive_comp, particle_comp,
     ) in &particle_query {
@@ -253,26 +280,34 @@ fn particle_merge_system(
             ..ParticleBundle::new(&cfg, &mut *meshes, mass, pos)
         });
     }
+
+    diagnostics.add_measurement(&COLLISION_DIAG, || start.elapsed().as_millis_f64())
 }
 
 fn gravity_to_velocities_system(
+    mut diagnostics: Diagnostics,
     time: Res<Time<Fixed>>,
 
     mut particle_query: Query<(&nbody::GravityFieldSample, &mut ParticleVelocity), With<Particle>>,
 ) {
+    let start = Instant::now();
     particle_query.par_iter_mut()
         .for_each(|(sample, mut velocity_comp)| {
             velocity_comp.velocity += sample.field_force * time.delta_seconds_f64();
-        })
+        });
+    diagnostics.add_measurement(&VELOCITY_DIAG, || start.elapsed().as_millis_f64())
 }
 
 fn apply_velocities_system(
+    mut diagnostics: Diagnostics,
     time: Res<Time<Fixed>>,
 
     mut particle_query: Query<(&mut Transform64, &ParticleVelocity), With<Particle>>,
 ) {
+    let start = Instant::now();
     particle_query.par_iter_mut()
         .for_each(|(mut transform, velocity_comp)| {
             transform.translation += velocity_comp.velocity * time.delta_seconds_f64();
         });
+    diagnostics.add_measurement(&MOVE_DIAG, || start.elapsed().as_millis_f64())
 }

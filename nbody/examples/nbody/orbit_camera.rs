@@ -85,7 +85,7 @@ fn camera_system(
     else { return };
 
     let mouse_sensitivity = 1. / 300.;
-    let lerp_proportion = time.delta_seconds_f64() * 10.;
+    let lerp_proportion = (time.delta_seconds_f64() * 10.).clamp(0., 1.);
 
     // let movement = {
     //     let forward = camera_transform.forward();
@@ -141,8 +141,8 @@ fn camera_system(
 
     let new_mode = match camera_comp.mode {
         CamMode::Rotate(mut mode) => {
-            if scroll != 0. {
-                if scroll > 0. {
+            for _ in 0..(scroll.abs().floor() as u32) {
+                if scroll < 0. {
                     mode.target_distance *= 1.05;
                 }
                 else {
@@ -151,20 +151,20 @@ fn camera_system(
             }
 
             if camera_comp.is_mouse_active {
-                mode.target_rotation *= DQuat::from_rotation_y(
-                    mouse_move.x as f64 * -mouse_sensitivity
-                );
                 mode.target_rotation *= DQuat::from_rotation_x(
                     mouse_move.y as f64 * -mouse_sensitivity
+                );
+                mode.target_rotation *= DQuat::from_rotation_y(
+                    mouse_move.x as f64 * -mouse_sensitivity
                 );
             }
 
             mode.distance = mode.distance.lerp(
-                mode.target_distance, 
+                mode.target_distance,
                 lerp_proportion,
             );
             mode.rotation = mode.rotation.lerp(
-                mode.target_rotation, 
+                mode.target_rotation,
                 lerp_proportion,
             );
 
