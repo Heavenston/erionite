@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use bevy::{diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic}, math::DVec3, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, time::common_conditions::on_timer, utils::HashSet};
 use doprec::{FloatingOrigin, Transform64, Transform64Bundle};
+use nbody::GravityConfig;
 use rand::prelude::*;
 use utils::{IsZeroApprox, Vec3Ext};
 
@@ -39,9 +40,9 @@ fn main() {
 
         .add_systems(Startup, setup_system)
         .add_systems(Update, (
-            update_particles_colors,
+            update_particles_colors.run_if(on_timer(Duration::from_millis(100))),
             update_debug_text_system,
-        ).run_if(on_timer(Duration::from_millis(100))))
+        ))
         .add_systems(FixedUpdate, (
             particle_merge_system,
             (
@@ -200,7 +201,7 @@ fn setup_system(
         ..default()
     }).with_children(|builder| {
         builder.spawn(TextBundle::from_section(
-            "Bonjur",
+            "",
             TextStyle {
                 font_size: 15.0,
                 ..default()
@@ -211,9 +212,12 @@ fn setup_system(
 
 fn update_debug_text_system(
     diagnostics: Res<DiagnosticsStore>,
+    mut gravity_cfg: ResMut<GravityConfig>,
 
     cam_query: Query<(&Transform64, &orbit_camera::OrbitCameraComp)>,
     particles_query: Query<(), With<Particle>>,
+
+    kb_input: Res<ButtonInput<KeyCode>>,
 
     mut debug_text: Query<&mut Text, With<DebugTextComp>>,
 ) {
@@ -241,6 +245,16 @@ fn update_debug_text_system(
 
     let particle_count = particles_query.iter().count();
 
+    let svo_state = if gravity_cfg.enabled_svo {
+        "enabled"
+    } else {
+        "disabled"
+    };
+
+    if kb_input.just_pressed(KeyCode::KeyS) {
+        gravity_cfg.enabled_svo = !gravity_cfg.enabled_svo;
+    }
+
     let mut debug_text = debug_text.single_mut();
     debug_text.sections[0].value = format!("\
     {fps:.1} fps - {frame_time:.3} ms/frame\n\
@@ -249,6 +263,7 @@ fn update_debug_text_system(
     - Collision detection: {collision_compute_duration:.3} ms\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
     Particles: cout {particle_count}\n\
+    Svo: {svo_state} (press 's' to toggle)\n\
     ");
 }
 
@@ -296,16 +311,18 @@ fn particle_merge_system(
     for (
         entity, transform, velocity_comp, attracted_comp, massive_comp, particle_comp,
     ) in &particle_query {
-        let Some(closest) = attracted_comp.closest_attractor()
+        let Some(nbody::AttractorInfo {
+            entity: closest_entity, ..
+        }) = attracted_comp.closest_attractor()
         else { continue; };
 
-        if destroyed.contains(&entity) || destroyed.contains(&closest.entity) {
+        if destroyed.contains(&entity) || destroyed.contains(&closest_entity) {
             continue;
         }
 
         let Ok((
             _other_entity, other_transform, other_velocity_comp, _other_attracted_comp, other_massive_comp, other_particle_comp,
-        )) = particle_query.get(closest.entity)
+        )) = particle_query.get(closest_entity)
         else { continue; };
 
         let dp = transform.translation - other_transform.translation;
@@ -335,8 +352,8 @@ fn particle_merge_system(
 
         destroyed.insert(entity);
         commands.entity(entity).despawn();
-        destroyed.insert(closest.entity);
-        commands.entity(closest.entity).despawn();
+        destroyed.insert(closest_entity);
+        commands.entity(closest_entity).despawn();
 
         let pos = (transform.translation + other_transform.translation) / 2.;
         let mass = massive_comp.mass + other_massive_comp.mass;

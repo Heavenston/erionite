@@ -197,9 +197,6 @@ pub struct AttractorInfo {
 #[derive(getset::CopyGetters, Component, Debug, Default, Clone, Copy)]
 #[getset(get_copy = "pub")]
 pub struct Attracted {
-    // TODO: Consider adding a generic or dyn abstraction to add any other
-    //       stats
-    strongest_attractor: Option<AttractorInfo>,
     closest_attractor: Option<AttractorInfo>,
 }
 
@@ -302,63 +299,125 @@ pub(crate) fn update_svo_system(
     );
 }
 
-pub(crate) fn compute_gravity_field_system(
+pub(crate) fn compute_gravity_field_system_no_svo(
     mut diagnostics: Diagnostics,
     cfg: Res<GravityConfig>,
 
     attractors: Query<(Entity, &GlobalTransform64, &Massive, &Attractor)>,
     mut victims: Query<(Entity, &GlobalTransform64, &mut GravityFieldSample, Option<&mut Attracted>)>,
 ) {
+    if cfg.enabled_svo {
+        return;
+    }
     let start = Instant::now();
 
-    victims.par_iter_mut()
-        .for_each(|(victim_entity, victim_pos, mut victim_sample, victim_attracted)| {
-            let mut total_force = DVec3::ZERO;
+    victims.par_iter_mut().for_each(|(
+        victim_entity, victim_pos, mut victim_sample, victim_attracted,
+    )| {
+        let mut total_force = DVec3::ZERO;
 
-            let mut strongest = None::<AttractorInfo>;
-            let mut closest = None::<AttractorInfo>;
+        let mut closest_attractor = None::<AttractorInfo>;
 
-            for (
-                attractor_entity, attractor_pos, attractor_mass, _attractor
-            ) in &attractors {
-                if victim_entity == attractor_entity {
-                    continue;
-                }
-
-                let diff = attractor_pos.translation() - victim_pos.translation();
-                if diff.is_zero_approx() {
-                    continue;
-                }
-                let squared_distance = diff.length_squared();
-                let force = attractor_mass.mass / squared_distance;
-
-                let attractor_info = AttractorInfo {
-                    entity: attractor_entity,
-                    force,
-                    squared_distance,
-                };
-                if strongest
-                    .map(|s| s.force < force)
-                    .unwrap_or(true)
-                {
-                    strongest = Some(attractor_info);
-                }
-                if closest
-                    .map(|s| s.squared_distance > attractor_info.squared_distance)
-                    .unwrap_or(true)
-                {
-                    closest = Some(attractor_info);
-                }
-
-                total_force += diff.normalize() * cfg.gravity_contant * force;
+        for (
+            attractor_entity, attractor_pos, attractor_mass, _attractor
+        ) in &attractors {
+            if victim_entity == attractor_entity {
+                continue;
             }
 
-            if let Some(mut attracted) = victim_attracted {
-                attracted.strongest_attractor = strongest;
-                attracted.closest_attractor = closest;
+            let diff = attractor_pos.translation() - victim_pos.translation();
+            if diff.is_zero_approx() {
+                continue;
             }
-            victim_sample.field_force = total_force;
-        });
+            let squared_distance = diff.length_squared();
+            let force = attractor_mass.mass / squared_distance;
+
+            let info = AttractorInfo {
+                entity: attractor_entity,
+                force,
+                squared_distance,
+            };
+
+            if closest_attractor
+                .map(|oi| oi.squared_distance > info.squared_distance)
+                .unwrap_or(true)
+            {
+                closest_attractor = Some(info);
+            }
+
+            total_force += diff.normalize() * cfg.gravity_contant * force;
+        }
+
+        if let Some(mut victim_attracted) = victim_attracted {
+            victim_attracted.closest_attractor = closest_attractor;
+        }
+
+        victim_sample.field_force = total_force;
+    });
+
+    diagnostics.add_measurement(
+        &GRAVITY_COMPUTE_SYSTEM_DURATION,
+        || start.elapsed().as_millis_f64(),
+    );
+}
+
+pub(crate) fn compute_gravity_field_system_yes_svo(
+    mut diagnostics: Diagnostics,
+    cfg: Res<GravityConfig>,
+    svo: Res<AttractorSvo>,
+
+    mut victims: Query<(Entity, &GlobalTransform64, &mut GravityFieldSample)>,
+) {
+    if !cfg.enabled_svo {
+        return;
+    }
+    let start = Instant::now();
+
+    let Some(root_cell) = &svo.root_cell
+    else { return };
+
+    victims.par_iter_mut().for_each(|(victim_entity, victim_pos, mut victim_sample)| {
+        let mut total_force = DVec3::ZERO;
+
+        let mut cell_stack = vec![(
+            root_cell,
+            svo::CellPath::new(),
+            svo.root_aabb,
+        )];
+        while let Some((cell, path, aabb)) = cell_stack.pop() {
+            match cell {
+                svo::Cell::Internal(internal) => {
+                    for comp in svo::CellPath::components() {
+                        cell_stack.push((
+                            internal.get_child(comp),
+                            path.clone().with_push(comp),
+                            svo::CellPath::new().with_push(comp).get_aabb(aabb),
+                        ));
+                    }
+                },
+                svo::Cell::Leaf(l) => {
+                    for entity_repr in &l.data.entities {
+                        if entity_repr.entity == victim_entity {
+                            continue;
+                        }
+                        let pos = aabb.position + aabb.size * entity_repr.pos;
+
+                        let diff = pos - victim_pos.translation();
+                        if diff.is_zero_approx() {
+                            continue;
+                        }
+                        let squared_distance = diff.length_squared();
+                        let force = entity_repr.mass / squared_distance;
+
+                        total_force += diff.normalize() * cfg.gravity_contant * force;
+                    }
+                },
+                svo::Cell::Packed(_) => unreachable!("No packed cell"),
+            }
+        }
+
+        victim_sample.field_force = total_force;
+    });
 
     diagnostics.add_measurement(
         &GRAVITY_COMPUTE_SYSTEM_DURATION,

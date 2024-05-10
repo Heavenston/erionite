@@ -12,7 +12,8 @@ impl Plugin for NBodyPlugin {
             #[cfg(feature = "rapier")]
             sync_attractor_masses_with_colliders_system,
             update_svo_system,
-            compute_gravity_field_system,
+            compute_gravity_field_system_no_svo,
+            compute_gravity_field_system_yes_svo,
             #[cfg(feature = "rapier")]
             apply_gravity_to_attracted_rigid_bodies_system,
         ).chain().in_set(GravitySystems));
