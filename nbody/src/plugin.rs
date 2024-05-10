@@ -12,8 +12,7 @@ impl Plugin for NBodyPlugin {
         app.add_systems(PostUpdate, (
             #[cfg(feature = "rapier")]
             sync_attractor_masses_with_colliders_system,
-            compute_gravity_field_single_threaded_system,
-            compute_gravity_field_parallel_system,
+            compute_gravity_field_system,
             #[cfg(feature = "rapier")]
             apply_gravity_to_attracted_rigid_bodies_system,
         ).chain().after(doprec::TransformSystems));

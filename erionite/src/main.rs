@@ -382,7 +382,7 @@ fn camera_system(
             RigidBodyBundle::dynamic(),
             nbody::GravityFieldSample::default(),
             nbody::Massive::default(),
-            nbody::Attracted,
+            nbody::Attracted::default(),
         ));
     }
 

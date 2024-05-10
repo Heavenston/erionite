@@ -82,7 +82,7 @@ fn setup_system(
             nbody::Massive {
                 mass: mass * 1_000f64,
             },
-            nbody::Attracted,
+            nbody::Attracted::default(),
             nbody::Attractor::default(),
         ));
     }
