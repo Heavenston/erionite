@@ -12,6 +12,8 @@ mod generic_glam;
 pub use generic_glam::*;
 #[cfg(feature = "logging")]
 pub mod logging;
+mod is_zero_approx;
+pub use is_zero_approx::*;
 
 pub use replace_with::replace_with_or_abort as replace_with;
 pub use bimap::BiHashMap;
