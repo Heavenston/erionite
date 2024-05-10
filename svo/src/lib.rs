@@ -180,7 +180,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
                 return Self::Internal(InternalCell { children, data });
             };
 
-            if !D::can_merge(&data, children_datas) {
+            if !D::should_auto_merge(&data, children_datas) {
                 did_merge = false;
                 return Self::Internal(InternalCell { children, data });
             }
@@ -201,8 +201,39 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
         did_merge
     }
 
+    /// Calls [try_merge](Self::try_merge) on all children from bottom to up
+    /// recursively and returns the numper of successfull merges
+    pub fn auto_merge(&mut self) -> usize
+        where D: MergeableData
+    {
+        let total: usize =
+            self.iter_children_mut().map(|c| c.auto_merge()).sum();
+        total + if self.try_merge() { 1 } else { 0 }
+    }
+
+    /// Same as [auto_merge](Self::auto_merge) but only traverse cells in
+    /// the given path
+    pub fn auto_merge_on_path(&mut self, mut path: CellPath) -> usize
+        where D: MergeableData
+    {
+        let mut total = 0;
+        match self {
+            Cell::Internal(i) => {
+                if let Some(comp) = path.pop_back() {
+                    total += i.get_child_mut(comp).auto_merge_on_path(path);
+                }
+            },
+            Cell::Leaf(_) | Cell::Packed(_) => (),
+        }
+
+        if self.try_merge() {
+            total += 1;
+        }
+        total
+    }
+
     /// If the current cell is a leaf node (or a packed leaf node)
-    /// adds a new internal cell using clones of the cell's data
+    /// uses [D::split] to split the current cell
     /// returns true if a split happened, false otherwise
     pub fn split(&mut self) -> bool
         where D: SplittableData
@@ -237,17 +268,53 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
             }.into()
         });
         did
-        // let Some(data) = self.data_mut().right().map(std::mem::take)
-        // else { return false; };
-        // let (data, children) = data.split();
-        // *self = InternalCell::<D, Ptr> {
-        //     children: children.map(|data| Ptr::new(LeafCell::new(data).into())),
-        //     data,
-        // }.into();
-        // true
     }
 
-    pub fn full_split(&mut self, depth: usize)
+    /// Like [Self::split] but checks with [D::should_auto_split] before
+    pub fn try_split(&mut self) -> bool
+        where D: SplittableData
+    {
+        let mut did = false;
+        utils::replace_with(self, |this| {
+            let leaf_data = match this {
+                Cell::Internal(_) => {
+                    did = false;
+                    return this;
+                },
+                Cell::Leaf(l) => {
+                    l.data
+                },
+                Cell::Packed(p) => match p.try_into_leaf() {
+                    Ok(l) => l.data,
+                    Err(p) => {
+                        did = false;
+                        return Cell::Packed(p);
+                    }
+                },
+            };
+
+            if !leaf_data.should_auto_split() {
+                return LeafCell { data: leaf_data }.into();
+            }
+
+            did = true;
+
+            let (data, children) = leaf_data.split();
+
+            InternalCell::<D, Ptr> {
+                children: children
+                    .map(|data| Ptr::new(LeafCell::new(data).into())),
+                data,
+            }.into()
+        });
+        did
+    }
+
+    /// Recursively splits the current cell until a full tree of the given depth
+    /// is created
+    /// 
+    /// depth = 0 does nothing
+    pub fn full_split(&mut self, depth: u32)
         where D: SplittableData
     {
         if depth == 0 {
@@ -255,6 +322,44 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
         }
         self.split();
         self.iter_children_mut().for_each(|c| c.full_split(depth - 1));
+    }
+
+    /// Calls try_split on the current cell, then continue the same process
+    /// on all its children (new or old ones) until either max_depth is reached
+    /// or try_split returns false on a leaf cell
+    /// 
+    /// max_depth = 0 does nothing
+    pub fn auto_split(&mut self, max_depth: u32)
+        where D: SplittableData
+    {
+        if max_depth == 0 {
+            return;
+        }
+        self.try_split();
+        self.iter_children_mut().for_each(|c| c.auto_split(max_depth - 1));
+    }
+
+    /// Same as [auto_split](Self::auto_split) but only traverse cells in
+    /// the given path
+    pub fn auto_split_on_path(&mut self, mut path: CellPath) -> usize
+        where D: SplittableData
+    {
+        let mut total = 0;
+
+        if self.try_split() {
+            total += 1;
+        }
+
+        match self {
+            Cell::Internal(i) => {
+                if let Some(comp) = path.pop_back() {
+                    total += i.get_child_mut(comp).auto_split_on_path(path);
+                }
+            },
+            Cell::Leaf(_) | Cell::Packed(_) => (),
+        }
+
+        total
     }
 
     /// Makes sure the current cell is an internal cell by depending on the cell's
@@ -495,37 +600,6 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
             ],
             data: Default::default(),
         }.into()
-    }
-
-    /// Calls [try_merge](Self::try_merge) on all children from bottom to up
-    /// recursively and returns the numper of successfull merges
-    pub fn simplify(&mut self) -> usize
-        where D: MergeableData
-    {
-        let total: usize =
-            self.iter_children_mut().map(|c| c.simplify()).sum();
-        total + if self.try_merge() { 1 } else { 0 }
-    }
-
-    /// Same as [simplify](Self::simplify) but only traverse nodes in
-    /// the given path
-    pub fn simplify_on_path(&mut self, mut path: CellPath) -> usize
-        where D: MergeableData
-    {
-        let mut total = 0;
-        match self {
-            Cell::Internal(i) => {
-                if let Some(comp) = path.pop_back() {
-                    total += i.get_child_mut(comp).simplify_on_path(path);
-                }
-            },
-            Cell::Leaf(_) | Cell::Packed(_) => (),
-        }
-
-        if self.try_merge() {
-            total += 1;
-        }
-        total
     }
 
     pub fn iter(&self) -> SvoIterator<'_, D, Ptr> {

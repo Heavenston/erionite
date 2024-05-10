@@ -105,7 +105,7 @@ impl AggregateData for TerrainCellData {
 }
 
 impl MergeableData for TerrainCellData {
-    fn can_merge(
+    fn should_auto_merge(
         _this: &TerrainCellData,
         d: [&Self; 8]
     ) -> bool {

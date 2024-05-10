@@ -17,14 +17,21 @@ pub type EitherDataRef<'a, D: Data> = Either<&'a D::Internal, &'a D>;
 pub type EitherDataMut<'a, D: Data> = Either<& 'a mut D::Internal, & 'a mut D>;
 
 pub trait SplittableData: Data {
+    fn should_auto_split(&self) -> bool {
+        false
+    }
+
     fn split(self) -> (Self::Internal, [Self; 8]);
 }
 
 pub trait MergeableData: Data {
-    fn can_merge(
-        this: &Self::Internal,
-        children: [&Self; 8]
-    ) -> bool;
+    fn should_auto_merge(
+        _this: &Self::Internal,
+        _children: [&Self; 8]
+    ) -> bool {
+        false
+    }
+
     fn merge(
         this: Self::Internal,
         children: [Self; 8]
@@ -107,12 +114,12 @@ macro_rules! impl_tuple {
         impl<$($name),*,> MergeableData for ($($name),*,)
             where $($name: MergeableData),*
         {
-            fn can_merge(
+            fn should_auto_merge(
                 this: &Self::Internal,
                 children: [&Self; 8]
             ) -> bool {
                 $(
-                    $name::can_merge(&this.$num, children.map(|x| &x.$num))
+                    $name::should_auto_merge(&this.$num, children.map(|x| &x.$num))
                 )&&*
             }
 

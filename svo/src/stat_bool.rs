@@ -27,7 +27,7 @@ impl From<StatBool> for crate::LeafCell<StatBool> {
 }
 
 impl crate::MergeableData for StatBool {
-    fn can_merge(
+    fn should_auto_merge(
         _this: &InnerStatBool,
         children: [&Self; 8]
     ) -> bool {

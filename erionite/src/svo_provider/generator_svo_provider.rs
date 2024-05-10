@@ -41,7 +41,7 @@ impl svo::AggregateData for GeneratedDepthData {
 }
 
 impl svo::MergeableData for GeneratedDepthData {
-    fn can_merge(
+    fn should_auto_merge(
         _this: &Self::Internal,
         children: [&Self; 8]
     ) -> bool {
@@ -104,7 +104,7 @@ impl svo::SplittableData for GenTaskData {
 }
 
 impl svo::MergeableData for GenTaskData {
-    fn can_merge(
+    fn should_auto_merge(
         _this: &Self::Internal,
         children: [&Self; 8]
     ) -> bool {
@@ -228,7 +228,7 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
         todo.push(svo::CellPath::new());
 
         let mut gen_target = std::mem::take(&mut self.gen_target);
-        gen_target.simplify();
+        gen_target.auto_merge();
 
         while let Some(path) = todo.pop() {
             let (found_path, cell) = gen_target.follow_path_mut(&path);

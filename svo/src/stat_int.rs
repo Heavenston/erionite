@@ -43,7 +43,7 @@ impl<T: Default + Debug + PrimInt> crate::SplittableData for StatInt<T> {
 }
 
 impl<T: Default + Debug + PrimInt> crate::MergeableData for StatInt<T> {
-    fn can_merge(
+    fn should_auto_merge(
         _this: &InnerStatInt<T>,
         children: [&Self; 8]
     ) -> bool {
