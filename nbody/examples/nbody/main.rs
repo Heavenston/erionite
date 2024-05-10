@@ -54,7 +54,7 @@ fn setup_system(
         unlit: true,
         ..default()
     });
-    for _ in 0..1_000 {
+    for _ in 0..2_000 {
         let mass = rng.gen_range(1f64..100.);
         let radius = (3. * mass) / (4. * std::f64::consts::PI);
 
