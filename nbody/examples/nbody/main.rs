@@ -2,7 +2,7 @@
 
 mod orbit_camera;
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use bevy::{diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic}, math::DVec3, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, time::common_conditions::on_timer, utils::HashSet};
 use doprec::{FloatingOrigin, Transform64, Transform64Bundle};
@@ -38,11 +38,11 @@ fn main() {
 
         .add_systems(Startup, setup_system)
         .add_systems(Update, (
-            // update_particles_colors.run_if(on_timer(Duration::from_millis(100))),
+            update_particles_colors.run_if(|| false),
             update_debug_text_system,
         ))
         .add_systems(FixedUpdate, (
-            // particle_merge_system,
+            particle_merge_system.run_if(|| false),
             position_integration_system,
         ).after(nbody::GravitySystems))
         

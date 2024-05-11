@@ -316,13 +316,14 @@ pub(crate) fn compute_gravity_field_system_no_svo(
             if diff.is_zero_approx() {
                 continue;
             }
-            let squared_distance = diff.length_squared();
-            let force = attractor_mass.mass / squared_distance;
+            let distance_squared = diff.length_squared();
+            let distance = distance_squared.sqrt();
+            let force = attractor_mass.mass / distance_squared;
 
             let info = AttractorInfo {
                 entity: attractor_entity,
                 force,
-                squared_distance,
+                squared_distance: distance_squared,
             };
 
             if closest_attractor
@@ -332,7 +333,7 @@ pub(crate) fn compute_gravity_field_system_no_svo(
                 closest_attractor = Some(info);
             }
 
-            total_force += diff.normalize() * cfg.gravity_contant * force;
+            total_force += (diff / distance) * cfg.gravity_contant * force;
         }
 
         victim_sample.closest_attractor = closest_attractor;
@@ -377,56 +378,59 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
             svo::CellPath::new(),
             svo_ctx.root_aabb,
         )];
-        while let Some((cell, path, aabb)) = cell_stack.pop() {
+        'svo_loop: while let Some((cell, path, aabb)) = cell_stack.pop() {
             match cell {
                 svo::Cell::Internal(internal) => {
-                    let mut stats = internal.data;
+                    'simplified: {
 
-                    // if the stats contains the victim we need to remove its effect from it
-                    if let Some((victim_mass, victim_attractor)) = victim_attractor_bundle {
-                        let contains_victim = victim_attractor.last_svo_position.as_ref()
-                            .is_some_and(|pos| path.is_prefix_of(pos));
-                        if contains_victim {
-                            let relative_pos = (victim_pos - aabb.position) / aabb.size;
-                            stats.center_of_mass -=
-                                (relative_pos * victim_mass.mass) / stats.total_mass;
-                            stats.total_mass -= victim_mass.mass;
-                            stats.count -= 1;
+                        if let Some((_victim_mass, victim_attractor)) = victim_attractor_bundle {
+                            let contains_victim = victim_attractor.last_svo_position.as_ref()
+                                .is_some_and(|pos| path.is_prefix_of(pos));
+                            if contains_victim {
+                                break 'simplified;
+                            }
                         }
+
+                        let stats = internal.data;
+
+                        let region_width = aabb.size.x;
+                        let diff_to_com = stats.center_of_mass - victim_pos;
+                        let distance_to_com_squared = diff_to_com.length_squared();
+                        let distance_to_com = distance_to_com_squared.sqrt();
+                        let ratio = region_width / distance_to_com;
+
+                        if ratio > 1. {
+                            break 'simplified;
+                        }
+                        
+                        let force = stats.total_mass / distance_to_com_squared;
+                        total_force += (diff_to_com / distance_to_com) * cfg.gravity_contant * force;
+
+                        continue 'svo_loop;
                     }
 
-                    let region_width = aabb.size.x;
-                    let diff_to_com = stats.center_of_mass - victim_pos;
-                    let distance_to_com_squared = diff_to_com.length_squared();
-                    let distance_to_com = distance_to_com_squared.sqrt();
-                    let ratio = region_width / distance_to_com;
-
-                    if ratio > 0.8 {
-                        for comp in svo::CellPath::components() {
-                            cell_stack.push((
-                                internal.get_child(comp),
-                                path.clone().with_push(comp),
-                                svo::CellPath::new().with_push(comp).get_aabb(aabb),
-                            ));
-                        }
-                        continue;
+                    for comp in svo::CellPath::components() {
+                        cell_stack.push((
+                            internal.get_child(comp),
+                            path.clone().with_push(comp),
+                            svo::CellPath::new().with_push(comp).get_aabb(aabb),
+                        ));
                     }
 
-                    let force = stats.total_mass / distance_to_com_squared;
-                    total_force += diff_to_com.normalize() * cfg.gravity_contant * force;
                 },
                 svo::Cell::Leaf(l) => {
-                    for entity_repr in &l.data.entities {
+                    'entity_loop: for entity_repr in &l.data.entities {
                         if entity_repr.entity == victim_entity {
-                            continue;
+                            continue 'entity_loop;
                         }
                         let pos = aabb.position + aabb.size * entity_repr.pos;
 
                         let diff = pos - victim_pos;
                         if diff.is_zero_approx() {
-                            continue;
+                            continue 'entity_loop;
                         }
                         let squared_distance = diff.length_squared();
+                        let distance = squared_distance.sqrt();
                         let force = entity_repr.mass / squared_distance;
 
                         let info = AttractorInfo {
@@ -441,7 +445,7 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
                             victim_sample.closest_attractor = Some(info);
                         }
 
-                        total_force += diff.normalize() * cfg.gravity_contant * force;
+                        total_force += (diff / distance) * cfg.gravity_contant * force;
                     }
                 },
                 svo::Cell::Packed(_) => unreachable!("No packed cell"),
