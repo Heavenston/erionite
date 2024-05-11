@@ -28,6 +28,6 @@ impl Plugin for NBodyPlugin {
         );
  
         app.init_resource::<GravityConfig>();
-        app.init_resource::<AttractorSvo>();
+        app.init_resource::<GravitySvoContext>();
     }
 }

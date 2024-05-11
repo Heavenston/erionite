@@ -6,7 +6,6 @@ use std::time::{Duration, Instant};
 
 use bevy::{diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic}, math::DVec3, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, time::common_conditions::on_timer, utils::HashSet};
 use doprec::{FloatingOrigin, Transform64, Transform64Bundle};
-use nbody::GravityConfig;
 use rand::prelude::*;
 use utils::{IsZeroApprox, Vec3Ext};
 
@@ -208,7 +207,8 @@ fn setup_system(
 
 fn update_debug_text_system(
     diagnostics: Res<DiagnosticsStore>,
-    mut gravity_cfg: ResMut<GravityConfig>,
+    mut gravity_cfg: ResMut<nbody::GravityConfig>,
+    gravity_svo_ctx: Res<nbody::GravitySvoContext>,
 
     cam_query: Query<(&Transform64, &orbit_camera::OrbitCameraComp)>,
     particles_query: Query<(), With<Particle>>,
@@ -251,6 +251,9 @@ fn update_debug_text_system(
         gravity_cfg.enabled_svo = !gravity_cfg.enabled_svo;
     }
 
+    let svo_depth = gravity_svo_ctx.depth();
+    let svo_max_depth = gravity_svo_ctx.max_depth();
+
     let mut debug_text = debug_text.single_mut();
     debug_text.sections[0].value = format!("\
     {fps:.1} fps - {frame_time:.3} ms/frame\n\
@@ -259,7 +262,7 @@ fn update_debug_text_system(
     - Collision detection: {collision_compute_duration:.3} ms\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
     Particles: cout {particle_count}\n\
-    Svo: {svo_state} (press 's' to toggle)\n\
+    Svo: {svo_state} (press 's' to toggle), depth: {svo_depth}/{svo_max_depth}\n\
     ");
 }
 

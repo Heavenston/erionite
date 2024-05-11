@@ -51,7 +51,8 @@ pub(crate) struct SvoData {
 pub(crate) struct SvoInternalData {
     pub count: u32,
     pub total_mass: f64,
-    pub average_pos: DVec3,
+    /// Relative to the AABB -> 0,0 for the min corner and 1,1 for the max corner
+    pub center_of_mass: DVec3,
 }
 
 impl svo::Data for SvoData {
@@ -64,7 +65,7 @@ impl svo::AggregateData for SvoData {
     ) -> Self::Internal {
         let mut count = 0;
         let mut total_mass = 0f64;
-        let mut pos_sum = DVec3::ZERO;
+        let mut weighed_pos_sum = DVec3::ZERO;
 
         for (comp, cell) in svo::CellPath::components().iter().zip(children.into_iter()) {
             let sub_cell_min = comp.as_uvec().as_dvec3() / 2.;
@@ -72,12 +73,14 @@ impl svo::AggregateData for SvoData {
                 Either::Left(internal) => {
                     count += internal.count;
                     total_mass += internal.total_mass;
-                    pos_sum += internal.average_pos * internal.count as f64;
+                    weighed_pos_sum += internal.total_mass * (
+                        internal.center_of_mass / 2. + sub_cell_min
+                    );
                 },
                 Either::Right(leaf) => {
                     count += u32::try_from(leaf.entities.len()).expect("too much entities!!");
                     total_mass += leaf.entities.iter().map(|e| e.mass).sum::<f64>();
-                    pos_sum += leaf.entities.iter()
+                    weighed_pos_sum += leaf.entities.iter()
                         .map(|e| e.pos / 2. + sub_cell_min)
                         .sum::<DVec3>();
                 },
@@ -87,7 +90,7 @@ impl svo::AggregateData for SvoData {
         SvoInternalData {
             total_mass,
             count,
-            average_pos: pos_sum / count as f64,
+            center_of_mass: weighed_pos_sum / total_mass,
         }
     }
 }
@@ -131,7 +134,7 @@ impl svo::MergeableData for SvoData {
         this: &Self::Internal,
         _children: [&Self; 8]
     ) -> bool {
-        this.count <= 5
+        this.count < 10
     }
 
     fn merge(
@@ -151,19 +154,33 @@ impl svo::InternalData for SvoInternalData {
 }
 
 #[derive(Resource)]
-pub(crate) struct AttractorSvo {
-    pub root_cell: Option<svo::BoxCell<SvoData>>,
-    pub root_aabb: DAabb,
-    pub max_depth: u32,
+pub struct GravitySvoContext {
+    root_cell: Option<svo::BoxCell<SvoData>>,
+    root_aabb: DAabb,
+    max_depth: u32,
 }
 
-impl Default for AttractorSvo {
+impl Default for GravitySvoContext {
     fn default() -> Self {
         Self {
             root_cell: default(),
             root_aabb: DAabb::new_center_size(DVec3::zero(), DVec3::splat(100_000f64)),
             max_depth: 20,
         }
+    }
+}
+
+impl GravitySvoContext {
+    pub fn depth(&self) -> u32 {
+        self.root_cell.as_ref().map(|svo| svo.depth()).unwrap_or(0)
+    }
+
+    pub fn max_depth(&self) -> u32 {
+        self.max_depth
+    }
+
+    pub fn root_aabb(&self) -> DAabb {
+        self.root_aabb
     }
 }
 
@@ -220,7 +237,7 @@ pub(crate) fn sync_attractor_masses_with_colliders_system(
 pub(crate) fn update_svo_system(
     mut diagnostics: Diagnostics,
     cfg: Res<GravityConfig>,
-    mut svo: ResMut<AttractorSvo>,
+    mut svo_ctx: ResMut<GravitySvoContext>,
 
     mut attractors: Query<(Entity, Ref<GlobalTransform64>, Ref<Massive>, &mut Attractor)>,
 ) {
@@ -228,15 +245,15 @@ pub(crate) fn update_svo_system(
 
     let mut was_reset = false;
     if !cfg.enabled_svo {
-        svo.root_cell = None;
+        svo_ctx.root_cell = None;
         return;
     }
     if true {
         was_reset = true;
-        svo.root_cell = Some(svo::LeafCell {
+        svo_ctx.root_cell = Some(svo::LeafCell {
             data: SvoData {
                 entities: default(),
-                remaining_allowed_depth: u8::try_from(svo.max_depth).expect("too deep"),
+                remaining_allowed_depth: u8::try_from(svo_ctx.max_depth).expect("too deep"),
             },
         }.into());
     }
@@ -255,8 +272,8 @@ pub(crate) fn update_svo_system(
             continue;
         }
 
-        let mut relative_pos = (attractor_transform.translation() - svo.root_aabb.min()) / svo.root_aabb.size;
-        let mut target_cell = svo.root_cell.as_mut().expect("set at the start");
+        let mut relative_pos = (attractor_transform.translation() - svo_ctx.root_aabb.min()) / svo_ctx.root_aabb.size;
+        let mut target_cell = svo_ctx.root_cell.as_mut().expect("set at the start");
         let mut path = svo::CellPath::new();
 
         while let svo::Cell::Internal(internal) = target_cell {
@@ -289,7 +306,7 @@ pub(crate) fn update_svo_system(
             mass: attractor_massive.mass,
         });
 
-        let root_cell = svo.root_cell.as_mut().expect("set at the start");
+        let root_cell = svo_ctx.root_cell.as_mut().expect("set at the start");
         root_cell.auto_split_on_path(path.clone());
         root_cell.auto_merge_on_path(path.clone());
 
@@ -368,7 +385,7 @@ pub(crate) fn compute_gravity_field_system_no_svo(
 pub(crate) fn compute_gravity_field_system_yes_svo(
     mut diagnostics: Diagnostics,
     cfg: Res<GravityConfig>,
-    svo: Res<AttractorSvo>,
+    svo_ctx: Res<GravitySvoContext>,
 
     mut victims: Query<(Entity, &GlobalTransform64, &mut GravityFieldSample)>,
 ) {
@@ -377,7 +394,7 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
     }
     let start = Instant::now();
 
-    let Some(root_cell) = &svo.root_cell
+    let Some(root_cell) = &svo_ctx.root_cell
     else { return };
 
     victims.par_iter_mut().for_each(|(victim_entity, victim_pos, mut victim_sample)| {
@@ -386,7 +403,7 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
         let mut cell_stack = vec![(
             root_cell,
             svo::CellPath::new(),
-            svo.root_aabb,
+            svo_ctx.root_aabb,
         )];
         while let Some((cell, path, aabb)) = cell_stack.pop() {
             match cell {
