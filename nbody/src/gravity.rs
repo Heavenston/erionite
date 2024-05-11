@@ -47,7 +47,7 @@ pub(crate) struct SvoData {
     pub remaining_allowed_depth: u8,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct SvoInternalData {
     pub count: u32,
     pub total_mass: f64,
@@ -98,7 +98,7 @@ impl svo::AggregateData for SvoData {
 impl svo::SplittableData for SvoData {
     fn should_auto_split(&self) -> bool {
         self.remaining_allowed_depth > 0 &&
-        self.entities.len() > 10
+        self.entities.len() > 100
     }
 
     fn split(self) -> (Self::Internal, [Self; 8]) {
@@ -107,18 +107,21 @@ impl svo::SplittableData for SvoData {
             ..default()
         });
 
-        for entity in self.entities {
-            let mut target = 0b000usize;
+        for mut entity in self.entities {
+            let mut comp = 0b000u8;
             if entity.pos.x > 0.5 {
-                target |= 0b001;
+                comp |= 0b001;
             }
             if entity.pos.y > 0.5 {
-                target |= 0b010;
+                comp |= 0b010;
             }
             if entity.pos.z > 0.5 {
-                target |= 0b100;
+                comp |= 0b100;
             }
-            children[target].entities.push(entity);
+            let comp = u3::new(comp);
+            let sub_origin = comp.as_uvec().as_dvec3() / 2.;
+            entity.pos = (entity.pos - sub_origin) * 2.;
+            children[comp.value() as usize].entities.push(entity);
         }
 
         let internal = SvoData::aggregate(
@@ -134,7 +137,7 @@ impl svo::MergeableData for SvoData {
         this: &Self::Internal,
         _children: [&Self; 8]
     ) -> bool {
-        this.count < 10
+        this.count < 100
     }
 
     fn merge(
@@ -200,6 +203,7 @@ pub struct GravityFieldSample {
     pub previous_field_force: DVec3,
     /// Field force at current time step
     pub field_force: DVec3,
+    pub closest_attractor: Option<AttractorInfo>,
 }
 
 #[derive(Component, Debug, Default, Clone)]
@@ -207,7 +211,7 @@ pub struct Attractor {
     pub last_svo_position: Option<svo::CellPath>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy,PartialEq)]
 pub struct AttractorInfo {
     pub entity: Entity,
     pub force: f64,
@@ -216,9 +220,7 @@ pub struct AttractorInfo {
 
 #[derive(getset::CopyGetters, Component, Debug, Default, Clone, Copy)]
 #[getset(get_copy = "pub")]
-pub struct Attracted {
-    closest_attractor: Option<AttractorInfo>,
-}
+pub struct Attracted;
 
 #[cfg(feature = "rapier")]
 pub(crate) fn sync_attractor_masses_with_colliders_system(
@@ -239,78 +241,43 @@ pub(crate) fn update_svo_system(
     cfg: Res<GravityConfig>,
     mut svo_ctx: ResMut<GravitySvoContext>,
 
-    mut attractors: Query<(Entity, Ref<GlobalTransform64>, Ref<Massive>, &mut Attractor)>,
+    entity_transform_mass: Query<(Entity, &GlobalTransform64, &Massive), With<Attractor>>,
+    mut attractors: Query<&mut Attractor>,
 ) {
     let start = Instant::now();
 
-    let mut was_reset = false;
     if !cfg.enabled_svo {
         svo_ctx.root_cell = None;
         return;
     }
-    if true {
-        was_reset = true;
-        svo_ctx.root_cell = Some(svo::LeafCell {
-            data: SvoData {
-                entities: default(),
-                remaining_allowed_depth: u8::try_from(svo_ctx.max_depth).expect("too deep"),
-            },
-        }.into());
-    }
 
-    for (
-        attractor_entity,
-        attractor_transform,
-        attractor_massive,
-        mut attractor,
-    ) in &mut attractors {
-        if !was_reset &&
-            attractor.last_svo_position.is_some() &&
-            !attractor_transform.is_changed() &&
-            !attractor_massive.is_changed()
-        {
-            continue;
+    svo_ctx.root_cell = Some(svo::LeafCell {
+        data: SvoData {
+            entities: entity_transform_mass.iter()
+                .map(|(entity, transform, massive)| SvoEntityRepr {
+                    entity,
+                    pos: (transform.translation() - svo_ctx.root_aabb.position) / svo_ctx.root_aabb.size,
+                    mass: massive.mass,
+                })
+                .collect(),
+            remaining_allowed_depth:
+                u8::try_from(svo_ctx.max_depth).expect("too deep"),
+        },
+    }.into());
+
+    let max_depth = svo_ctx.max_depth;
+    let root_cell = svo_ctx.root_cell.as_mut().expect("set at the start");
+    root_cell.auto_split(max_depth);
+    // root_cell.auto_merge();
+    // root_cell.update_all();
+
+    for item in root_cell.iter() {
+        let mut iter = attractors.iter_many_mut(
+            item.data.entities.iter().map(|repr| repr.entity)
+        );
+        while let Some(mut attractor) = iter.fetch_next() {
+            attractor.last_svo_position = Some(item.path.clone());
         }
-
-        let mut relative_pos = (attractor_transform.translation() - svo_ctx.root_aabb.min()) / svo_ctx.root_aabb.size;
-        let mut target_cell = svo_ctx.root_cell.as_mut().expect("set at the start");
-        let mut path = svo::CellPath::new();
-
-        while let svo::Cell::Internal(internal) = target_cell {
-            let mut new_comp = 0b000u8;
-            if relative_pos.x > 0.5 {
-                relative_pos.x -= 0.5;
-                new_comp |= 0b001;
-            }
-            if relative_pos.y > 0.5 {
-                relative_pos.y -= 0.5;
-                new_comp |= 0b010;
-            }
-            if relative_pos.z > 0.5 {
-                relative_pos.z -= 0.5;
-                new_comp |= 0b100;
-            }
-            relative_pos *= 2.;
-
-            path.push(u3::new(new_comp));
-
-            target_cell = internal.get_child_mut(u3::new(new_comp));
-        }
-
-        let svo::Cell::Leaf(leaf_target_cell) = target_cell
-        else { unreachable!("not internal so must be leaf") };
-
-        leaf_target_cell.data.entities.push(SvoEntityRepr {
-            entity: attractor_entity,
-            pos: relative_pos,
-            mass: attractor_massive.mass,
-        });
-
-        let root_cell = svo_ctx.root_cell.as_mut().expect("set at the start");
-        root_cell.auto_split_on_path(path.clone());
-        root_cell.auto_merge_on_path(path.clone());
-
-        attractor.last_svo_position = Some(path);
     }
 
     diagnostics.add_measurement(
@@ -324,7 +291,7 @@ pub(crate) fn compute_gravity_field_system_no_svo(
     cfg: Res<GravityConfig>,
 
     attractors: Query<(Entity, &GlobalTransform64, &Massive, &Attractor)>,
-    mut victims: Query<(Entity, &GlobalTransform64, &mut GravityFieldSample, Option<&mut Attracted>)>,
+    mut victims: Query<(Entity, &GlobalTransform64, &mut GravityFieldSample)>,
 ) {
     if cfg.enabled_svo {
         return;
@@ -332,7 +299,7 @@ pub(crate) fn compute_gravity_field_system_no_svo(
     let start = Instant::now();
 
     victims.par_iter_mut().for_each(|(
-        victim_entity, victim_pos, mut victim_sample, victim_attracted,
+        victim_entity, victim_pos, mut victim_sample
     )| {
         let mut total_force = DVec3::ZERO;
 
@@ -368,10 +335,7 @@ pub(crate) fn compute_gravity_field_system_no_svo(
             total_force += diff.normalize() * cfg.gravity_contant * force;
         }
 
-        if let Some(mut victim_attracted) = victim_attracted {
-            victim_attracted.closest_attractor = closest_attractor;
-        }
-
+        victim_sample.closest_attractor = closest_attractor;
         victim_sample.previous_field_force = victim_sample.field_force;
         victim_sample.field_force = total_force;
     });
@@ -387,7 +351,10 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
     cfg: Res<GravityConfig>,
     svo_ctx: Res<GravitySvoContext>,
 
-    mut victims: Query<(Entity, &GlobalTransform64, &mut GravityFieldSample)>,
+    mut victims: Query<(
+        Entity, &GlobalTransform64, &mut GravityFieldSample,
+        Option<(&Massive, &Attractor)>
+    )>,
 ) {
     if !cfg.enabled_svo {
         return;
@@ -397,7 +364,12 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
     let Some(root_cell) = &svo_ctx.root_cell
     else { return };
 
-    victims.par_iter_mut().for_each(|(victim_entity, victim_pos, mut victim_sample)| {
+    victims.par_iter_mut().for_each(|(
+        victim_entity, victim_pos, mut victim_sample,
+        victim_attractor_bundle
+    )| {
+        let victim_pos = victim_pos.translation();
+
         let mut total_force = DVec3::ZERO;
 
         let mut cell_stack = vec![(
@@ -408,13 +380,40 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
         while let Some((cell, path, aabb)) = cell_stack.pop() {
             match cell {
                 svo::Cell::Internal(internal) => {
-                    for comp in svo::CellPath::components() {
-                        cell_stack.push((
-                            internal.get_child(comp),
-                            path.clone().with_push(comp),
-                            svo::CellPath::new().with_push(comp).get_aabb(aabb),
-                        ));
+                    let mut stats = internal.data;
+
+                    // if the stats contains the victim we need to remove its effect from it
+                    if let Some((victim_mass, victim_attractor)) = victim_attractor_bundle {
+                        let contains_victim = victim_attractor.last_svo_position.as_ref()
+                            .is_some_and(|pos| path.is_prefix_of(pos));
+                        if contains_victim {
+                            let relative_pos = (victim_pos - aabb.position) / aabb.size;
+                            stats.center_of_mass -=
+                                (relative_pos * victim_mass.mass) / stats.total_mass;
+                            stats.total_mass -= victim_mass.mass;
+                            stats.count -= 1;
+                        }
                     }
+
+                    let region_width = aabb.size.x;
+                    let diff_to_com = stats.center_of_mass - victim_pos;
+                    let distance_to_com_squared = diff_to_com.length_squared();
+                    let distance_to_com = distance_to_com_squared.sqrt();
+                    let ratio = region_width / distance_to_com;
+
+                    if ratio > 0.8 {
+                        for comp in svo::CellPath::components() {
+                            cell_stack.push((
+                                internal.get_child(comp),
+                                path.clone().with_push(comp),
+                                svo::CellPath::new().with_push(comp).get_aabb(aabb),
+                            ));
+                        }
+                        continue;
+                    }
+
+                    let force = stats.total_mass / distance_to_com_squared;
+                    total_force += diff_to_com.normalize() * cfg.gravity_contant * force;
                 },
                 svo::Cell::Leaf(l) => {
                     for entity_repr in &l.data.entities {
@@ -423,12 +422,24 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
                         }
                         let pos = aabb.position + aabb.size * entity_repr.pos;
 
-                        let diff = pos - victim_pos.translation();
+                        let diff = pos - victim_pos;
                         if diff.is_zero_approx() {
                             continue;
                         }
                         let squared_distance = diff.length_squared();
                         let force = entity_repr.mass / squared_distance;
+
+                        let info = AttractorInfo {
+                            entity: entity_repr.entity,
+                            force,
+                            squared_distance,
+                        };
+                        if victim_sample.closest_attractor
+                            .map(|oi| oi.squared_distance > info.squared_distance)
+                            .unwrap_or(true)
+                        {
+                            victim_sample.closest_attractor = Some(info);
+                        }
 
                         total_force += diff.normalize() * cfg.gravity_contant * force;
                     }

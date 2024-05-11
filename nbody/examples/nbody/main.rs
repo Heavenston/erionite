@@ -38,11 +38,11 @@ fn main() {
 
         .add_systems(Startup, setup_system)
         .add_systems(Update, (
-            update_particles_colors.run_if(on_timer(Duration::from_millis(100))),
+            // update_particles_colors.run_if(on_timer(Duration::from_millis(100))),
             update_debug_text_system,
         ))
         .add_systems(FixedUpdate, (
-            particle_merge_system,
+            // particle_merge_system,
             position_integration_system,
         ).after(nbody::GravitySystems))
         
@@ -65,6 +65,7 @@ pub struct ParticleVelocity {
 #[derive(Resource, Debug, Clone)]
 pub struct ParticleConfig {
     pub material: Handle<StandardMaterial>,
+    pub mesh: Handle<Mesh>,
     pub density: f64,
 }
 
@@ -85,22 +86,25 @@ pub struct ParticleBundle {
 impl ParticleBundle {
     pub fn new(
         cfg: &ParticleConfig,
-        meshes: &mut Assets<Mesh>,
-        materials: &mut Assets<StandardMaterial>,
+        _meshes: &mut Assets<Mesh>,
+        _materials: &mut Assets<StandardMaterial>,
         mass: f64, pos: DVec3
     ) -> Self {
         let radius = (3. * (mass / cfg.density)) / (4. * std::f64::consts::PI);
-        let material = materials.add(materials.get(&cfg.material).unwrap().clone());
+        // let material = materials.add(materials.get(&cfg.material).unwrap().clone());
+        let material = cfg.material.clone();
 
         Self {
             transform: Transform64Bundle {
-                local: Transform64::from_translation(pos),
+                local: Transform64 {
+                    translation: pos,
+                    rotation: default(),
+                    scale: DVec3::splat(radius),
+                },
                 ..default()
             },
             visibility: default(),
-            mesh: meshes.add(SphereMeshBuilder::new(radius as f32, SphereKind::Ico {
-                subdivisions: 5,
-            }).build()),
+            mesh: cfg.mesh.clone(),
             material,
             particle: Particle { radius },
             velocity: default(),
@@ -125,11 +129,14 @@ fn setup_system(
             unlit: true,
             ..default()
         }),
+        mesh: meshes.add(SphereMeshBuilder::new(1., SphereKind::Ico {
+            subdivisions: 4,
+        }).build()),
         density: 1_000f64,
     };
     commands.insert_resource(cfg.clone());
     
-    for _ in 0..1_500 {
+    for _ in 0..2_500 {
         let mass = rng.gen_range(1_000f64..100_000.);
 
         let pos = DVec3::new(
@@ -302,17 +309,17 @@ fn particle_merge_system(
 
     cfg: Res<ParticleConfig>,
 
-    particle_query: Query<(Entity, &Transform64, &ParticleVelocity, &nbody::Attracted, &nbody::Massive, &Particle)>,
+    particle_query: Query<(Entity, &Transform64, &ParticleVelocity, &nbody::GravityFieldSample, &nbody::Massive, &Particle)>,
 ) {
     let start = Instant::now();
     let mut destroyed = HashSet::<Entity>::new();
 
     for (
-        entity, transform, velocity_comp, attracted_comp, massive_comp, particle_comp,
+        entity, transform, velocity_comp, sample_comp, massive_comp, particle_comp,
     ) in &particle_query {
         let Some(nbody::AttractorInfo {
             entity: closest_entity, ..
-        }) = attracted_comp.closest_attractor()
+        }) = sample_comp.closest_attractor()
         else { continue; };
 
         if destroyed.contains(&entity) || destroyed.contains(&closest_entity) {
@@ -324,27 +331,37 @@ fn particle_merge_system(
         )) = particle_query.get(closest_entity)
         else { continue; };
 
-        let dp = transform.translation - other_transform.translation;
-        let dv = velocity_comp.velocity - other_velocity_comp.velocity;
+        let p1 = transform.translation;
+        let v1 = velocity_comp.velocity;
+        let r1 = particle_comp.radius;
+        let m1 = massive_comp.mass;
+
+        let p2 = other_transform.translation;
+        let v2 = other_velocity_comp.velocity;
+        let r2 = other_particle_comp.radius;
+        let m2 = other_massive_comp.mass;
+
+        let dp = p1 - p2;
+        let dv = v1 - v2;
 
         if dv.is_zero_approx() {
             continue;
         }
 
-        let closest_approach_time =
+        let t =
             -(dp * dv).array().into_iter().sum::<f64>() /
             dv.array().into_iter().map(|x| x*x).sum::<f64>();
 
-        let closest_approach_time = closest_approach_time.clamp(
+        let t = t.clamp(
             -time.delta_seconds_f64(),
             time.delta_seconds_f64(),
         );
 
-        let closest_distance_squared = (dp + closest_approach_time * dv).length_squared();
+        let closest_distance_squared = (dp + t * dv).length_squared();
 
-        let sumed_radius = (particle_comp.radius + other_particle_comp.radius) / 2.;
+        let contact_distance = (r1 + r2) / 2.;
 
-        if sumed_radius.powi(2) < closest_distance_squared {
+        if contact_distance.powi(2) < closest_distance_squared {
             // no collision
             continue;
         }
@@ -354,13 +371,13 @@ fn particle_merge_system(
         destroyed.insert(closest_entity);
         commands.entity(closest_entity).despawn();
 
-        let pos = (transform.translation + other_transform.translation) / 2.;
-        let mass = massive_comp.mass + other_massive_comp.mass;
-        let velocity = velocity_comp.velocity + other_velocity_comp.velocity;
+        let m3 = m1 + m2;
+        let v3 = ((m1 * v1) + (m2 * v2)) / m3;
+        let p3 = ((p1 + v1 * t) * m1 + (p2 + v2 * t) * m2) / m3;
 
         commands.spawn(ParticleBundle {
-            velocity: ParticleVelocity { velocity },
-            ..ParticleBundle::new(&cfg, &mut *meshes, &mut *materials, mass, pos)
+            velocity: ParticleVelocity { velocity: v3 },
+            ..ParticleBundle::new(&cfg, &mut *meshes, &mut *materials, m3, p3)
         });
     }
 
