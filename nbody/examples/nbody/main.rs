@@ -374,8 +374,18 @@ fn position_integration_system(
     particle_query.par_iter_mut().for_each(|(
         sample, mut velocity_comp, mut transform,
     )| {
-        velocity_comp.velocity += sample.field_force * time.delta_seconds_f64();
-        transform.translation += velocity_comp.velocity * time.delta_seconds_f64();
+        // leapfrog integration (i hope?)
+        let dt = time.delta_seconds_f64();
+        let v = velocity_comp.velocity;
+        let p = transform.translation;
+        let a = sample.previous_field_force;
+        let na = sample.field_force;
+
+        let np = p + v * dt + 0.5 * a * dt.powi(2);
+        let nv = v + 0.5 * ( a + na ) * dt;
+
+        transform.translation = np;
+        velocity_comp.velocity = nv;
     });
     diagnostics.add_measurement(&INTEGRATION_DIAG, || start.elapsed().as_millis_f64())
 }

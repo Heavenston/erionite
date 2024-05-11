@@ -179,6 +179,9 @@ pub struct Massive {
 #[derive(getset::CopyGetters, Component, Debug, Default, PartialEq, Clone, Copy)]
 #[getset(get_copy = "pub")]
 pub struct GravityFieldSample {
+    /// Field force at previous time step
+    pub previous_field_force: DVec3,
+    /// Field force at current time step
     pub field_force: DVec3,
 }
 
@@ -352,6 +355,7 @@ pub(crate) fn compute_gravity_field_system_no_svo(
             victim_attracted.closest_attractor = closest_attractor;
         }
 
+        victim_sample.previous_field_force = victim_sample.field_force;
         victim_sample.field_force = total_force;
     });
 
