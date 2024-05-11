@@ -50,10 +50,12 @@ impl<D: Data, Ptr: SvoPtr<D>> InternalCell<D, Ptr> {
         }
     }
     
+    #[inline]
     pub fn get_child(&self, pos: u3) -> &Ptr {
         &self.children[usize::from(pos.value())]
     }
 
+    #[inline]
     pub fn get_child_mut(&mut self, pos: u3) -> &mut Cell<D, Ptr> {
         self.children[usize::from(pos.value())].make_mut()
     }

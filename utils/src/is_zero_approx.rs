@@ -7,24 +7,28 @@ pub trait IsZeroApprox {
 }
 
 impl IsZeroApprox for f32 {
+    #[inline]
     fn is_zero_approx(&self) -> bool {
         self.abs() <= f32::EPSILON
     }
 }
 
 impl IsZeroApprox for f64 {
+    #[inline]
     fn is_zero_approx(&self) -> bool {
         self.abs() <= f64::EPSILON
     }
 }
 
 impl IsZeroApprox for DVec3 {
+    #[inline]
     fn is_zero_approx(&self) -> bool {
         self.array().iter().all(IsZeroApprox::is_zero_approx)
     }
 }
 
 impl IsZeroApprox for Vec3 {
+    #[inline]
     fn is_zero_approx(&self) -> bool {
         self.array().iter().all(IsZeroApprox::is_zero_approx)
     }

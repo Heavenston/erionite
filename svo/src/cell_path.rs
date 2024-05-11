@@ -13,14 +13,17 @@ pub struct CellPath(CellPathInner);
 impl CellPath {
     pub const MAX_CAPACITY: u32 = CellPathInner::BITS.div_floor(3);
 
+    #[inline]
     pub fn new() -> Self {
         Self(0x1)
     }
 
+    #[inline]
     pub const fn capacity(&self) -> u32 {
         Self::MAX_CAPACITY
     }
 
+    #[inline]
     const fn mark_bit_position(&self) -> u32 {
         debug_assert!(
             self.0.leading_zeros() < CellPathInner::BITS,
@@ -31,31 +34,37 @@ impl CellPath {
         sb
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.0 == 1
     }
 
     #[doc(alias = "depth")]
+    #[inline]
     pub const fn len(&self) -> u32 {
         return self.mark_bit_position() / 3;
     }
 
     #[doc(alias = "len")]
+    #[inline]
     pub const fn depth(&self) -> u32 {
         self.len()
     }
 
+    #[inline]
     pub fn push(&mut self, v: u3) {
         assert!(self.len() < Self::MAX_CAPACITY);
 
         self.0 = (self.0 << 3) | CellPathInner::from(v.value());
     }
 
+    #[inline]
     pub fn with_push(mut self, v: u3) -> Self {
         self.push(v);
         self
     }
 
+    #[inline]
     pub fn push_back(&mut self, v: u3) {
         let mbp = self.mark_bit_position();
         assert!(mbp / 3 < Self::MAX_CAPACITY);
@@ -68,11 +77,13 @@ impl CellPath {
         self.0 |= 1 << (mbp + 3);
     }
 
+    #[inline]
     pub fn with_push_back(mut self, v: u3) -> Self {
         self.push_back(v);
         self
     }
 
+    #[inline]
     pub fn peek(&self) -> Option<u3> {
         if self.is_empty() {
             return None;
@@ -117,6 +128,7 @@ impl CellPath {
         Some(u3::new((val & 0b111) as u8))
     }
     
+    #[inline]
     pub fn parent(&self) -> Option<Self> {
         if self.len() == 0
         { return None; }
@@ -126,11 +138,13 @@ impl CellPath {
 
     /// Returns an iterator over all parents, from the deepest to the root
     /// excluding self
+    #[inline]
     pub fn parents(&self) -> impl Iterator<Item = Self> {
         let mut current = self.clone();
         std::iter::from_fn(move || { current = current.parent()?; Some(current.clone()) })
     }
 
+    #[inline]
     pub fn get_aabb(&self, mut root: DAabb) -> DAabb {
         for x in self {
             root.size /= 2.;
@@ -236,6 +250,7 @@ impl CellPath {
                 .map(|xx| ((x, y, z), xx)))
     }
 
+    #[inline]
     pub const fn components() -> [u3; 8] {
         [
             u3::new(0b000), u3::new(0b001), u3::new(0b010), u3::new(0b011),
@@ -297,16 +312,19 @@ impl CellPath {
         Self((self.0 & new_mask) | new_end_bit)
     }
 
+    #[inline]
     pub fn extend(&mut self, other: &Self) {
         assert!(Self::MAX_CAPACITY > self.len() + other.len());
         self.0 = (self.0 << (other.len() * 3)) | (other.index() as CellPathInner);
     }
 
+    #[inline]
     pub fn extended(mut self, other: &Self) -> Self {
         self.extend(other);
         self
     }
 
+    #[inline]
     pub fn is_prefix_of(&self, other: &Self) -> bool {
         let self_bit = self.mark_bit_position();
         let other_bit = other.mark_bit_position();
