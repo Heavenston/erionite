@@ -4,7 +4,13 @@ mod orbit_camera;
 
 use std::time::Instant;
 
-use bevy::{diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic}, math::DVec3, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, time::common_conditions::on_timer, utils::HashSet};
+use bevy::{
+    diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic},
+    math::{DQuat, DVec3},
+    prelude::*,
+    render::mesh::{SphereKind, SphereMeshBuilder},
+    utils::HashSet,
+};
 use doprec::{FloatingOrigin, Transform64, Transform64Bundle};
 use rand::prelude::*;
 use utils::{IsZeroApprox, Vec3Ext};
@@ -45,6 +51,8 @@ fn main() {
             particle_merge_system.run_if(|| false),
             position_integration_system,
         ).after(nbody::GravitySystems))
+
+        .insert_resource(Time::<Fixed>::from_hz(60.0))
         
         .run();
 }
@@ -88,9 +96,13 @@ impl ParticleBundle {
         cfg: &ParticleConfig,
         _meshes: &mut Assets<Mesh>,
         _materials: &mut Assets<StandardMaterial>,
-        mass: f64, pos: DVec3
+        mass: f64,
+        pos: DVec3,
+        custom_radius: Option<f64>,
     ) -> Self {
-        let radius = (3. * (mass / cfg.density)) / (4. * std::f64::consts::PI);
+        let radius = custom_radius.unwrap_or_else(||
+            (3. * (mass / cfg.density)) / (4. * std::f64::consts::PI)
+        );
         // let material = materials.add(materials.get(&cfg.material).unwrap().clone());
         let material = cfg.material.clone();
 
@@ -120,6 +132,7 @@ fn setup_system(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    gravity_cfg: Res<nbody::GravityConfig>,
 ) {
     let mut rng = SmallRng::from_entropy();
 
@@ -132,23 +145,38 @@ fn setup_system(
         mesh: meshes.add(SphereMeshBuilder::new(1., SphereKind::Ico {
             subdivisions: 4,
         }).build()),
-        density: 1_000f64,
+        density: 1f64,
     };
     commands.insert_resource(cfg.clone());
     
-    for _ in 0..2_500 {
-        let mass = rng.gen_range(1_000f64..100_000.);
-
-        let pos = DVec3::new(
-            rng.gen_range(-10_000f64..10_000.),
-            rng.gen_range(-10_000f64..10_000.),
-            rng.gen_range(-10_000f64..10_000.),
-        );
-
-        commands.spawn(ParticleBundle::new(
-            &cfg, &mut *meshes, &mut *materials, mass, pos
+    let sun_mass = 1_000_000_000.;
+    commands
+        .spawn(ParticleBundle::new(
+            &cfg, &mut *meshes, &mut *materials,
+            sun_mass, DVec3::ZERO,
+            Some(1_000f64),
         ));
+
+    for _ in 0..1_000 {
+        let distance = rng.gen_range(1_100f64..10_000.);
+        let angle = rng.gen_range(-std::f64::consts::PI..std::f64::consts::PI);
+        let mass = rng.gen_range(1f64..100.);
+
+        let pos = DQuat::from_rotation_y(angle) * DVec3::new(0., 0., 1.) * distance;
+        let vel_norm = ((gravity_cfg.gravity_constant * sun_mass) / distance).sqrt();
+        let velocity = pos.cross(DVec3::new(0., 1., 0.)).normalize() * vel_norm;
+
+        commands
+            .spawn(ParticleBundle {
+                velocity: ParticleVelocity { velocity },
+                ..ParticleBundle::new(
+                    &cfg, &mut *meshes, &mut *materials,
+                    mass, pos,
+                    None,
+                )
+            });
     }
+
     // let mass = 1_000f64;
     // commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, &mut *materials, mass, DVec3::new(
     //     -10., 0., 0.,
@@ -218,7 +246,7 @@ fn update_debug_text_system(
     gravity_svo_ctx: Res<nbody::GravitySvoContext>,
 
     cam_query: Query<(&Transform64, &orbit_camera::OrbitCameraComp)>,
-    particles_query: Query<(), With<Particle>>,
+    particles_query: Query<&ParticleVelocity, With<Particle>>,
 
     kb_input: Res<ButtonInput<KeyCode>>,
 
@@ -261,6 +289,8 @@ fn update_debug_text_system(
     let svo_depth = gravity_svo_ctx.depth();
     let svo_max_depth = gravity_svo_ctx.max_depth();
 
+    let energy = particles_query.iter().map(|v| v.velocity.length()).sum::<f64>();
+
     let mut debug_text = debug_text.single_mut();
     debug_text.sections[0].value = format!("\
     {fps:.1} fps - {frame_time:.3} ms/frame\n\
@@ -268,7 +298,7 @@ fn update_debug_text_system(
     - Gravity compute: {grav_compute_duration:.3} ms\n\
     - Collision detection: {collision_compute_duration:.3} ms\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
-    Particles: cout {particle_count}\n\
+    Particles: count {particle_count}, total energy: {energy}\n\
     Svo: {svo_state} (press 's' to toggle), depth: {svo_depth}/{svo_max_depth}\n\
     ");
 }
@@ -377,7 +407,7 @@ fn particle_merge_system(
 
         commands.spawn(ParticleBundle {
             velocity: ParticleVelocity { velocity: v3 },
-            ..ParticleBundle::new(&cfg, &mut *meshes, &mut *materials, m3, p3)
+            ..ParticleBundle::new(&cfg, &mut *meshes, &mut *materials, m3, p3, None)
         });
     }
 

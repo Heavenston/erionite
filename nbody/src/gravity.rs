@@ -19,14 +19,14 @@ pub struct GravitySystems;
 
 #[derive(Resource)]
 pub struct GravityConfig {
-    pub gravity_contant: f64,
+    pub gravity_constant: f64,
     pub enabled_svo: bool,
 }
 
 impl Default for GravityConfig {
     fn default() -> Self {
         Self {
-            gravity_contant: 6.6743f64,
+            gravity_constant: 6.6743f64,
             enabled_svo: true,
         }
     }
@@ -299,8 +299,10 @@ pub(crate) fn compute_gravity_field_system_no_svo(
     let start = Instant::now();
 
     victims.par_iter_mut().for_each(|(
-        victim_entity, victim_pos, mut victim_sample
+        victim_entity, victim_translation, mut victim_sample
     )| {
+        let victim_pos = victim_translation.translation();
+
         let mut total_force = DVec3::ZERO;
 
         let mut closest_attractor = None::<AttractorInfo>;
@@ -312,7 +314,8 @@ pub(crate) fn compute_gravity_field_system_no_svo(
                 continue;
             }
 
-            let diff = attractor_pos.translation() - victim_pos.translation();
+            let attractor_pos = attractor_pos.translation();
+            let diff = attractor_pos - victim_pos;
             if diff.is_zero_approx() {
                 continue;
             }
@@ -333,7 +336,7 @@ pub(crate) fn compute_gravity_field_system_no_svo(
                 closest_attractor = Some(info);
             }
 
-            total_force += (diff / distance) * cfg.gravity_contant * force;
+            total_force += (diff / distance) * cfg.gravity_constant * force;
         }
 
         victim_sample.closest_attractor = closest_attractor;
@@ -404,7 +407,7 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
                         }
                         
                         let force = stats.total_mass / distance_to_com_squared;
-                        total_force += (diff_to_com / distance_to_com) * cfg.gravity_contant * force;
+                        total_force += (diff_to_com / distance_to_com) * cfg.gravity_constant * force;
 
                         continue 'svo_loop;
                     }
@@ -423,9 +426,9 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
                         if entity_repr.entity == victim_entity {
                             continue 'entity_loop;
                         }
-                        let pos = aabb.position + aabb.size * entity_repr.pos;
+                        let attractor_pos = aabb.position + aabb.size * entity_repr.pos;
 
-                        let diff = pos - victim_pos;
+                        let diff = attractor_pos - victim_pos;
                         if diff.is_zero_approx() {
                             continue 'entity_loop;
                         }
@@ -445,13 +448,14 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
                             victim_sample.closest_attractor = Some(info);
                         }
 
-                        total_force += (diff / distance) * cfg.gravity_contant * force;
+                        total_force += (diff / distance) * cfg.gravity_constant * force;
                     }
                 },
                 svo::Cell::Packed(_) => unreachable!("No packed cell"),
             }
         }
 
+        victim_sample.previous_field_force = victim_sample.field_force;
         victim_sample.field_force = total_force;
     });
 

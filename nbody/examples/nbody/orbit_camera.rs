@@ -16,9 +16,9 @@ impl Plugin for OrbitCameraPlugin {
 #[derivative(Default)]
 pub struct RotateMode {
     /// Interpolated to target_distance and applied to the transform
-    #[derivative(Default(value = "10."))]
+    #[derivative(Default(value = "1_000."))]
     distance: f64,
-    #[derivative(Default(value = "10."))]
+    #[derivative(Default(value = "1_000."))]
     target_distance: f64,
     /// Interpolated to target_distance and applied to the transform
     rotation: DQuat,

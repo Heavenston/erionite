@@ -27,7 +27,10 @@ impl Plugin for NBodyPlugin {
                 .with_suffix(" ms")
         );
  
-        app.init_resource::<GravityConfig>();
+        app.insert_resource(GravityConfig {
+            enabled_svo: self.enable_svo,
+            ..default()
+        });
         app.init_resource::<GravitySvoContext>();
     }
 }

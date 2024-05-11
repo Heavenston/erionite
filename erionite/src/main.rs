@@ -86,7 +86,7 @@ fn setup_system(
     // let volume = (radius.powi(3) * std::f64::consts::PI * 4.) / 3.;
     // let mass = volume / 1_000_000.;
     let target_surface_gravity = 9.8;
-    let mass = (target_surface_gravity / gravity_cfg.gravity_contant) * radius.powi(2);
+    let mass = (target_surface_gravity / gravity_cfg.gravity_constant) * radius.powi(2);
 
     log::info!("AABB Size    : {aabb_size}");
     log::info!("Planet radius: {radius}");
