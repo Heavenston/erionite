@@ -40,6 +40,25 @@ pub trait AabbExt<T: GlamFloat<Aabb3d = Self>>
             num_traits::clamp(point[i], min[i], max[i])
         ))
     }
+
+    fn furthest_point(&self, point: T::Vec3) -> T::Vec3 {
+        let point = point.array();
+        let max = self.max().array();
+        let min = self.min().array();
+
+        // only corners can be the furthest points
+        T::Vec3::from_array([0,1,2].map(|i| {
+            let d1 = (point[i] - max[i]).abs();
+            let d2 = (point[i] - min[i]).abs();
+
+            if d1 > d2 {
+                max[i]
+            }
+            else {
+                min[i]
+            }
+        }))
+    }
 }
 
 impl AabbExt<f32> for Aabb3d {
