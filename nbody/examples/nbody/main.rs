@@ -11,8 +11,7 @@ use rand::prelude::*;
 use utils::{IsZeroApprox, Vec3Ext};
 
 const COLLISION_DIAG: DiagnosticPath = DiagnosticPath::const_new("collision_compute");
-const VELOCITY_DIAG: DiagnosticPath = DiagnosticPath::const_new("velocity_compute");
-const MOVE_DIAG: DiagnosticPath = DiagnosticPath::const_new("move_compute");
+const INTEGRATION_DIAG: DiagnosticPath = DiagnosticPath::const_new("velocity_compute");
 
 fn main() {
     utils::logging::setup_basic_logging().unwrap();
@@ -45,10 +44,7 @@ fn main() {
         ))
         .add_systems(FixedUpdate, (
             particle_merge_system,
-            (
-                gravity_to_velocities_system,
-                apply_velocities_system,
-            ).chain(),
+            position_integration_system,
         ).after(nbody::GravitySystems))
         
         .run();
@@ -368,30 +364,18 @@ fn particle_merge_system(
     diagnostics.add_measurement(&COLLISION_DIAG, || start.elapsed().as_millis_f64())
 }
 
-fn gravity_to_velocities_system(
+fn position_integration_system(
     mut diagnostics: Diagnostics,
     time: Res<Time<Fixed>>,
 
-    mut particle_query: Query<(&nbody::GravityFieldSample, &mut ParticleVelocity), With<Particle>>,
+    mut particle_query: Query<(&nbody::GravityFieldSample, &mut ParticleVelocity, &mut Transform64), With<Particle>>,
 ) {
     let start = Instant::now();
-    particle_query.par_iter_mut()
-        .for_each(|(sample, mut velocity_comp)| {
-            velocity_comp.velocity += sample.field_force * time.delta_seconds_f64();
-        });
-    diagnostics.add_measurement(&VELOCITY_DIAG, || start.elapsed().as_millis_f64())
-}
-
-fn apply_velocities_system(
-    mut diagnostics: Diagnostics,
-    time: Res<Time<Fixed>>,
-
-    mut particle_query: Query<(&mut Transform64, &ParticleVelocity), With<Particle>>,
-) {
-    let start = Instant::now();
-    particle_query.par_iter_mut()
-        .for_each(|(mut transform, velocity_comp)| {
-            transform.translation += velocity_comp.velocity * time.delta_seconds_f64();
-        });
-    diagnostics.add_measurement(&MOVE_DIAG, || start.elapsed().as_millis_f64())
+    particle_query.par_iter_mut().for_each(|(
+        sample, mut velocity_comp, mut transform,
+    )| {
+        velocity_comp.velocity += sample.field_force * time.delta_seconds_f64();
+        transform.translation += velocity_comp.velocity * time.delta_seconds_f64();
+    });
+    diagnostics.add_measurement(&INTEGRATION_DIAG, || start.elapsed().as_millis_f64())
 }
