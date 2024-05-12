@@ -16,11 +16,3 @@ utils = { version = "0.0.0", path = "../utils" }
 
 [features]
 rapier = ["dep:rapier_overlay"]
-
-[dev-dependencies]
-bevy = "0.13.2"
-derivative = "2.2.0"
-doprec = { path = "../doprec" }
-log = "0.4.21"
-rand = { version = "0.8.5", features = ["small_rng"] }
-utils = { path = "../utils", features = ["logging"] }

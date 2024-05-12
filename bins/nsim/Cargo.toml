@@ -1,0 +1,13 @@
+[package]
+name = "nsim"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+bevy = "0.13.2"
+derivative = "2.2.0"
+doprec = { version = "0.0.0", path = "../../doprec" }
+log = "0.4.21"
+nbody = { version = "0.0.0", path = "../../nbody" }
+rand = { version = "0.8.5", features = ["small_rng"] }
+utils = { version = "0.0.0", path = "../../utils", features = ["logging"] }
