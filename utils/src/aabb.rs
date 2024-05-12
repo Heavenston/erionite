@@ -1,7 +1,7 @@
 use bevy_math::{bounding::Aabb3d, DVec3};
 use bevy_render::primitives::Aabb;
 
-use crate::AabbExt;
+use crate::{AabbExt, Vec3Ext};
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct DAabb {
@@ -83,6 +83,11 @@ impl DAabb {
     pub fn is_touching_sphere_surface(self, sphere_origin: DVec3, sphere_radius: f64) -> bool {
         self.touching_sphere(sphere_origin, sphere_radius)
             && (!self.fully_contained_in_sphere(sphere_origin, sphere_radius))
+    }
+
+    pub fn expand_to_contain(&mut self, point: DVec3) {
+        self.set_min(self.min().min(point));
+        self.set_max(self.max().max(point));
     }
 }
 

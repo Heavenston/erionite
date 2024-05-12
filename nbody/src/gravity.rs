@@ -5,7 +5,7 @@ use doprec::GlobalTransform64;
 #[cfg(feature = "rapier")]
 use rapier_overlay::*;
 use svo::AggregateData;
-use utils::{AsVecExt, DAabb, IsZeroApprox, Vec3Ext as _};
+use utils::{AsVecExt, DAabb, IsZeroApprox, Vec3Ext};
 use either::Either;
 use arbitrary_int::*;
 
@@ -241,6 +241,7 @@ pub(crate) fn update_svo_system(
     cfg: Res<GravityConfig>,
     mut svo_ctx: ResMut<GravitySvoContext>,
 
+    transforms: Query<&GlobalTransform64, With<Attractor>>,
     entity_transform_mass: Query<(Entity, &GlobalTransform64, &Massive), With<Attractor>>,
     mut attractors: Query<&mut Attractor>,
 ) {
@@ -250,6 +251,12 @@ pub(crate) fn update_svo_system(
         svo_ctx.root_cell = None;
         return;
     }
+
+    svo_ctx.root_aabb = DAabb::new_center_size(DVec3::ZERO, DVec3::ONE);
+    transforms.iter()
+        .for_each(|transform|
+            svo_ctx.root_aabb.expand_to_contain(transform.translation())
+        );
 
     svo_ctx.root_cell = Some(svo::LeafCell {
         data: SvoData {
@@ -385,11 +392,15 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
             match cell {
                 svo::Cell::Internal(internal) => {
                     'simplified: {
-
                         if let Some((_victim_mass, victim_attractor)) = victim_attractor_bundle {
                             let contains_victim = victim_attractor.last_svo_position.as_ref()
                                 .is_some_and(|pos| path.is_prefix_of(pos));
                             if contains_victim {
+                                // let relative_pos = (victim_pos - aabb.position) / aabb.size;
+                                // stats.center_of_mass -=
+                                //     (relative_pos * victim_mass.mass) / stats.total_mass;
+                                // stats.total_mass -= victim_mass.mass;
+                                // stats.count -= 1;
                                 break 'simplified;
                             }
                         }
@@ -402,7 +413,7 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
                         let distance_to_com = distance_to_com_squared.sqrt();
                         let ratio = region_width / distance_to_com;
 
-                        if ratio > 1. {
+                        if ratio > 0.8 {
                             break 'simplified;
                         }
                         

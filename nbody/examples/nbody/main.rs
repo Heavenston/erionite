@@ -145,7 +145,7 @@ fn setup_system(
         mesh: meshes.add(SphereMeshBuilder::new(1., SphereKind::Ico {
             subdivisions: 4,
         }).build()),
-        density: 1f64,
+        density: 100f64,
     };
     commands.insert_resource(cfg.clone());
     
@@ -157,10 +157,10 @@ fn setup_system(
             Some(1_000f64),
         ));
 
-    for _ in 0..5_000 {
-        let distance = rng.gen_range(1_010f64..1_100.);
+    for _ in 0..1_000 {
+        let distance = rng.gen_range(2_000f64..2_500.);
         let angle = rng.gen_range(-std::f64::consts::PI..std::f64::consts::PI);
-        let mass = rng.gen_range(1f64..100.);
+        let mass = rng.gen_range(100f64..10_000.);
 
         let pos = DQuat::from_rotation_y(angle) * DVec3::new(0., 0., 1.) * distance;
         let vel_norm = ((gravity_cfg.gravity_constant * sun_mass) / distance).sqrt();
