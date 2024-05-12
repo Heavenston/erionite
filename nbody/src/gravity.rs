@@ -98,7 +98,7 @@ impl svo::AggregateData for SvoData {
 impl svo::SplittableData for SvoData {
     fn should_auto_split(&self) -> bool {
         self.remaining_allowed_depth > 0 &&
-        self.entities.len() > 100
+        self.entities.len() > 10
     }
 
     fn split(self) -> (Self::Internal, [Self; 8]) {

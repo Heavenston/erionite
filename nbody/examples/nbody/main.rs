@@ -157,8 +157,8 @@ fn setup_system(
             Some(1_000f64),
         ));
 
-    for _ in 0..1_000 {
-        let distance = rng.gen_range(1_100f64..10_000.);
+    for _ in 0..5_000 {
+        let distance = rng.gen_range(1_010f64..1_100.);
         let angle = rng.gen_range(-std::f64::consts::PI..std::f64::consts::PI);
         let mass = rng.gen_range(1f64..100.);
 
