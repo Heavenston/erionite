@@ -72,7 +72,7 @@ fn camera_system(
     mut mouse_move_events: EventReader<MouseMotion>,
     mut mouse_wheel_events: EventReader<MouseWheel>,
 
-    kb_input: Res<ButtonInput<KeyCode>>,
+    _kb_input: Res<ButtonInput<KeyCode>>,
     mouse_input: Res<ButtonInput<MouseButton>>,
 
     time: Res<Time>,

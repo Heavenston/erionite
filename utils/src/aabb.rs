@@ -1,7 +1,7 @@
 use bevy_math::{bounding::Aabb3d, DVec3};
 use bevy_render::primitives::Aabb;
 
-use crate::{AabbExt, Vec3Ext};
+use crate::AabbExt;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct DAabb {
