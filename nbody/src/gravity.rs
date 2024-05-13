@@ -14,22 +14,25 @@ pub const GRAVITY_COMPUTE_SYSTEM_DURATION: DiagnosticPath =
 pub const GRAVITY_SVO_UPDATE_SYSTEM_DURATION: DiagnosticPath =
     DiagnosticPath::const_new("svo_update_compute");
 
+/// If set to true, when visiting the svo, cells that contains the current particle
+/// will always be visited
+const FORCE_VISIT_OWN_CELLS: bool = false;
+
 #[derive(SystemSet, Debug, PartialEq, Eq, Default, Hash, Clone, Copy)]
 pub struct GravitySystems;
 
-#[derive(Resource)]
+#[derive(Resource, derivative::Derivative)]
+#[derivative(Default)]
 pub struct GravityConfig {
+    #[derivative(Default(value = "6.6743"))]
     pub gravity_constant: f64,
+    #[derivative(Default(value = "true"))]
     pub enabled_svo: bool,
-}
-
-impl Default for GravityConfig {
-    fn default() -> Self {
-        Self {
-            gravity_constant: 6.6743f64,
-            enabled_svo: true,
-        }
-    }
+    /// The higher this value the faster the compute but the more imprecise 
+    /// it will get.
+    /// 0. means the svo is fully traversed (which is slower than disabling the svo)
+    #[derivative(Default(value = "0.8"))]
+    pub svo_skip_threshold: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -392,20 +395,22 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
             match cell {
                 svo::Cell::Internal(internal) => {
                     'simplified: {
-                        if let Some((_victim_mass, victim_attractor)) = victim_attractor_bundle {
+                        let mut stats = internal.data;
+
+                        if let Some((victim_mass, victim_attractor)) = victim_attractor_bundle {
                             let contains_victim = victim_attractor.last_svo_position.as_ref()
                                 .is_some_and(|pos| path.is_prefix_of(pos));
-                            if contains_victim {
-                                // let relative_pos = (victim_pos - aabb.position) / aabb.size;
-                                // stats.center_of_mass -=
-                                //     (relative_pos * victim_mass.mass) / stats.total_mass;
-                                // stats.total_mass -= victim_mass.mass;
-                                // stats.count -= 1;
+                            if contains_victim && FORCE_VISIT_OWN_CELLS {
                                 break 'simplified;
                             }
+                            if contains_victim {
+                                let relative_pos = (victim_pos - aabb.position) / aabb.size;
+                                stats.center_of_mass -=
+                                    (relative_pos * victim_mass.mass) / stats.total_mass;
+                                stats.total_mass -= victim_mass.mass;
+                                stats.count -= 1;
+                            }
                         }
-
-                        let stats = internal.data;
 
                         let region_width = aabb.size.x;
                         let diff_to_com = stats.center_of_mass - victim_pos;
@@ -413,7 +418,7 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
                         let distance_to_com = distance_to_com_squared.sqrt();
                         let ratio = region_width / distance_to_com;
 
-                        if ratio > 0.8 {
+                        if ratio > cfg.svo_skip_threshold {
                             break 'simplified;
                         }
                         
