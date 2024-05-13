@@ -20,4 +20,4 @@ const FORCE_VISIT_OWN_CELLS: bool = true;
 
 /// If an svo has more than this amount of particles it is splitted if the
 /// max depth has not been reached
-const SVO_LEAF_MAX_PARTICLE_COUNT: usize = 10;
+const SVO_LEAF_MAX_PARTICLE_COUNT: usize = 100;

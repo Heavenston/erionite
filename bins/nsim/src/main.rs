@@ -2,7 +2,7 @@
 
 mod orbit_camera;
 
-use std::time::Instant;
+use std::{ops::Range, time::Instant};
 
 use bevy::{
     core::TaskPoolThreadAssignmentPolicy, diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic}, math::{DQuat, DVec3}, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, tasks::available_parallelism, utils::HashSet
@@ -82,6 +82,11 @@ pub struct ParticleConfig {
     pub material: Handle<StandardMaterial>,
     pub mesh: Handle<Mesh>,
     pub density: f64,
+
+    pub sun_mass: f64,
+
+    pub distance_range: Range<f64>,
+    pub mass_range: Range<f64>,
 }
 
 #[derive(Bundle, Debug)]
@@ -135,14 +140,45 @@ impl ParticleBundle {
     }
 }
 
+fn spawn_particles(
+    cfg: &ParticleConfig,
+    gravity_cfg: &nbody::GravityConfig,
+    mut commands: Commands,
+
+    materials: &mut Assets<StandardMaterial>,
+    meshes: &mut Assets<Mesh>,
+
+    count: usize,
+) {
+    let mut rng = SmallRng::from_entropy();
+
+    for _ in 0..count {
+        let distance = rng.gen_range(cfg.distance_range.clone());
+        let angle = rng.gen_range(-std::f64::consts::PI..std::f64::consts::PI);
+        let mass = rng.gen_range(cfg.mass_range.clone());
+
+        let pos = DQuat::from_rotation_y(angle) * DVec3::new(0., 0., 1.) * distance;
+        let vel_norm = ((gravity_cfg.gravity_constant * cfg.sun_mass) / distance).sqrt();
+        let velocity = pos.cross(DVec3::new(0., 1., 0.)).normalize() * vel_norm;
+
+        commands
+            .spawn(ParticleBundle {
+                velocity: ParticleVelocity { velocity },
+                ..ParticleBundle::new(
+                    &cfg, meshes, materials,
+                    mass, pos,
+                    None,
+                )
+            });
+    }
+}
+
 fn setup_system(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     gravity_cfg: Res<nbody::GravityConfig>,
 ) {
-    let mut rng = SmallRng::from_entropy();
-
     let cfg = ParticleConfig {
         material: materials.add(StandardMaterial {
             base_color: Color::RED,
@@ -153,36 +189,25 @@ fn setup_system(
             subdivisions: 4,
         }).build()),
         density: 100f64,
+
+        sun_mass: 1_000_000_000.,
+
+        distance_range: 2_000.0..2_500.0,
+        mass_range: 100.0..10_000.,
     };
     commands.insert_resource(cfg.clone());
     
-    let sun_mass = 1_000_000_000.;
     commands
         .spawn(ParticleBundle::new(
             &cfg, &mut *meshes, &mut *materials,
-            sun_mass, DVec3::ZERO,
+            cfg.sun_mass, DVec3::ZERO,
             Some(1_000f64),
         ));
 
-    for _ in 0..1_000 {
-        let distance = rng.gen_range(2_000f64..2_500.);
-        let angle = rng.gen_range(-std::f64::consts::PI..std::f64::consts::PI);
-        let mass = rng.gen_range(100f64..10_000.);
-
-        let pos = DQuat::from_rotation_y(angle) * DVec3::new(0., 0., 1.) * distance;
-        let vel_norm = ((gravity_cfg.gravity_constant * sun_mass) / distance).sqrt();
-        let velocity = pos.cross(DVec3::new(0., 1., 0.)).normalize() * vel_norm;
-
-        commands
-            .spawn(ParticleBundle {
-                velocity: ParticleVelocity { velocity },
-                ..ParticleBundle::new(
-                    &cfg, &mut *meshes, &mut *materials,
-                    mass, pos,
-                    None,
-                )
-            });
-    }
+    spawn_particles(
+        &cfg, &*gravity_cfg, commands.reborrow(),
+        &mut *materials, &mut *meshes, 1_000,
+    );
 
     // let mass = 1_000f64;
     // commands.spawn(ParticleBundle::new(&cfg, &mut *meshes, &mut *materials, mass, DVec3::new(
@@ -248,9 +273,15 @@ fn setup_system(
 }
 
 fn update_debug_text_system(
+    mut commands: Commands,
+
     diagnostics: Res<DiagnosticsStore>,
+    cfg: Res<ParticleConfig>,
     mut gravity_cfg: ResMut<nbody::GravityConfig>,
     gravity_svo_ctx: Res<nbody::GravitySvoContext>,
+
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
 
     cam_query: Query<(&Transform64, &orbit_camera::OrbitCameraComp)>,
     particles_query: Query<&ParticleVelocity, With<Particle>>,
@@ -302,6 +333,12 @@ fn update_debug_text_system(
             gravity_cfg.svo_skip_threshold = 0.;
         }
     }
+    if kb_input.just_pressed(KeyCode::KeyP) {
+        spawn_particles(
+            &cfg, &*gravity_cfg, commands.reborrow(),
+            &mut *materials, &mut *meshes, 500,
+        );
+    }
 
     let svo_depth = gravity_svo_ctx.depth();
     let svo_max_depth = gravity_svo_ctx.max_depth();
@@ -316,7 +353,7 @@ fn update_debug_text_system(
     - Gravity compute: {grav_compute_duration:.3} ms\n\
     - Collision detection: {collision_compute_duration:.3} ms\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
-    Particles: count {particle_count}, total energy: {energy}\n\
+    Particles: count {particle_count} (press 'p' to spawn more),\n   total energy: {energy:.2}\n\
     Svo: {svo_state} (press 's' to toggle), depth: {svo_depth}/{svo_max_depth}, theta: {svo_theta:.2} (+/- {theta_step})\n\
     ");
 }
