@@ -13,7 +13,7 @@ pub struct GravityConfig {
     /// The higher this value the faster the compute but the more imprecise 
     /// it will get.
     /// 0. means the svo is fully traversed (which is slower than disabling the svo)
-    #[derivative(Default(value = "0.8"))]
+    #[derivative(Default(value = "0.25"))]
     pub svo_skip_threshold: f64,
 }
 

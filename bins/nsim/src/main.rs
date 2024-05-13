@@ -5,11 +5,7 @@ mod orbit_camera;
 use std::time::Instant;
 
 use bevy::{
-    diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic},
-    math::{DQuat, DVec3},
-    prelude::*,
-    render::mesh::{SphereKind, SphereMeshBuilder},
-    utils::HashSet,
+    core::TaskPoolThreadAssignmentPolicy, diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic}, math::{DQuat, DVec3}, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, tasks::available_parallelism, utils::HashSet
 };
 use doprec::{FloatingOrigin, Transform64, Transform64Bundle};
 use rand::prelude::*;
@@ -27,6 +23,17 @@ fn main() {
 
         .add_plugins((
             DefaultPlugins.build()
+                .set(TaskPoolPlugin {
+                    task_pool_options: TaskPoolOptions {
+                        min_total_threads: available_parallelism() + 8,
+                        compute: TaskPoolThreadAssignmentPolicy {
+                            min_threads: available_parallelism(),
+                            max_threads: available_parallelism(),
+                            percent: 1.,
+                        },
+                        ..default()
+                    },
+                })
                 .disable::<bevy::transform::TransformPlugin>()
                 .disable::<bevy::log::LogPlugin>(),
             doprec::DoprecPlugin::default(),
@@ -285,9 +292,20 @@ fn update_debug_text_system(
     if kb_input.just_pressed(KeyCode::KeyS) {
         gravity_cfg.enabled_svo = !gravity_cfg.enabled_svo;
     }
+    let theta_step = 0.05;
+    if kb_input.just_pressed(KeyCode::NumpadAdd) {
+        gravity_cfg.svo_skip_threshold += theta_step;
+    }
+    if kb_input.just_pressed(KeyCode::NumpadSubtract) {
+        gravity_cfg.svo_skip_threshold -= theta_step;
+        if gravity_cfg.svo_skip_threshold < 0. {
+            gravity_cfg.svo_skip_threshold = 0.;
+        }
+    }
 
     let svo_depth = gravity_svo_ctx.depth();
     let svo_max_depth = gravity_svo_ctx.max_depth();
+    let svo_theta = gravity_cfg.svo_skip_threshold;
 
     let energy = particles_query.iter().map(|v| v.velocity.length()).sum::<f64>();
 
@@ -299,7 +317,7 @@ fn update_debug_text_system(
     - Collision detection: {collision_compute_duration:.3} ms\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
     Particles: count {particle_count}, total energy: {energy}\n\
-    Svo: {svo_state} (press 's' to toggle), depth: {svo_depth}/{svo_max_depth}\n\
+    Svo: {svo_state} (press 's' to toggle), depth: {svo_depth}/{svo_max_depth}, theta: {svo_theta:.2} (+/- {theta_step})\n\
     ");
 }
 

@@ -1,3 +1,4 @@
+use super::*;
 
 use bevy::{math::DVec3, prelude::*};
 use svo::AggregateData as _;
@@ -30,6 +31,10 @@ pub(super) struct SvoInternalData {
 
 impl svo::Data for SvoData {
     type Internal = SvoInternalData;
+}
+
+impl svo::InternalData for SvoInternalData {
+    
 }
 
 impl svo::AggregateData for SvoData {
@@ -71,7 +76,7 @@ impl svo::AggregateData for SvoData {
 impl svo::SplittableData for SvoData {
     fn should_auto_split(&self) -> bool {
         self.remaining_allowed_depth > 0 &&
-        self.entities.len() > 10
+        self.entities.len() > SVO_LEAF_MAX_PARTICLE_COUNT
     }
 
     fn split(self) -> (Self::Internal, [Self; 8]) {
@@ -103,28 +108,4 @@ impl svo::SplittableData for SvoData {
 
         (internal, children)
     }
-}
-
-impl svo::MergeableData for SvoData {
-    fn should_auto_merge(
-        this: &Self::Internal,
-        _children: [&Self; 8]
-    ) -> bool {
-        this.count < 100
-    }
-
-    fn merge(
-        _this: Self::Internal,
-        children: [Self; 8]
-    ) -> Self {
-        Self {
-            remaining_allowed_depth: children.iter()
-                .map(|c| c.remaining_allowed_depth).max().unwrap_or_default() + 1,
-            entities: children.into_iter().flat_map(|x| x.entities).collect(),
-        }
-    }
-}
-
-impl svo::InternalData for SvoInternalData {
-    
 }
