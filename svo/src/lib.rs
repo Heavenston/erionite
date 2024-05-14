@@ -364,6 +364,26 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
         total
     }
 
+    /// Replaces the current cell with the given `pref` function and then continues
+    /// the same process with its (potentially new) children
+    /// then calls `suff` function
+    pub fn auto_replace_with<FP, FS>(
+        &mut self,
+        path: CellPath,
+        pref: &mut FP,
+        suff: &mut FS,
+    )
+        where FP: FnMut(&CellPath, Cell<D, Ptr>) -> Cell<D, Ptr>,
+              FS: FnMut(&CellPath, Cell<D, Ptr>) -> Cell<D, Ptr>,
+    {
+        utils::replace_with(self, |cell| pref(&path, cell));
+        self.iter_children_mut().zip(CellPath::components().into_iter())
+            .for_each(|(child, comp)| {
+                child.auto_replace_with(path.clone().with_push(comp), pref, suff);
+            });
+        utils::replace_with(self, |cell| suff(&path, cell));
+    }
+
     /// Makes sure the current cell is an internal cell by depending on the cell's
     /// kind:
     /// - for internal cells, *nothing* is done.
