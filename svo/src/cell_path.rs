@@ -35,7 +35,7 @@ impl CellPath {
     }
 
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.0 == 1
     }
 
@@ -59,9 +59,8 @@ impl CellPath {
     }
 
     #[inline]
-    pub fn with_push(mut self, v: u3) -> Self {
-        self.push(v);
-        self
+    pub const fn with_push(self, v: u3) -> Self {
+        Self((self.0 << 3) | v.value() as CellPathInner)
     }
 
     #[inline]
