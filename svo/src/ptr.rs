@@ -2,6 +2,8 @@ mod arc;
 pub use arc::*;
 mod boxed;
 pub use boxed::*;
+mod bumpbox;
+pub use bumpbox::*;
 
 use std::ops::Deref;
 

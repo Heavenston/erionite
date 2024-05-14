@@ -7,6 +7,7 @@ edition = "2021"
 arbitrary-int = "1.2.6"
 bevy_math = "0.13.2"
 bevy_render = "0.13.2"
+bumpalo = { version = "3.16.0", features = ["boxed"] }
 either = "1.9.0"
 half = { version = "2.4.1", features = ["serde"] }
 itertools = "0.12.0"
