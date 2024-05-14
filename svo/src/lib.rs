@@ -56,7 +56,9 @@ impl<D: Data, Ptr: SvoPtr<D>> InternalCell<D, Ptr> {
     }
 
     #[inline]
-    pub fn get_child_mut(&mut self, pos: u3) -> &mut Cell<D, Ptr> {
+    pub fn get_child_mut(&mut self, pos: u3) -> &mut Cell<D, Ptr>
+        where Ptr: MutableSvoPtr<D>,
+    {
         self.children[usize::from(pos.value())].make_mut()
     }
 
@@ -74,7 +76,9 @@ impl<D: Data, Ptr: SvoPtr<D>> InternalCell<D, Ptr> {
         self.children.iter()
     }
 
-    pub fn iter_children_mut(&mut self) -> impl Iterator<Item = &mut Cell<D, Ptr>> {
+    pub fn iter_children_mut(&mut self) -> impl Iterator<Item = &mut Cell<D, Ptr>>
+        where Ptr: MutableSvoPtr<D>,
+    {
         self.children.iter_mut().map(Ptr::make_mut)
     }
 
@@ -162,7 +166,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// returns false when merging is impossible (always the case for leaf cells and packed cells)
     /// and true when mering was successfull
     pub fn try_merge(&mut self) -> bool
-        where D: MergeableData
+        where D: MergeableData,
+              Ptr: OwnedSvoPtr<D>,
     {
         let mut did_merge = false;
         utils::replace_with(self, |this| {
@@ -206,7 +211,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// Calls [try_merge](Self::try_merge) on all children from bottom to up
     /// recursively and returns the numper of successfull merges
     pub fn auto_merge(&mut self) -> usize
-        where D: MergeableData
+        where D: MergeableData,
+              Ptr: MutableSvoPtr<D> + OwnedSvoPtr<D>,
     {
         let total: usize =
             self.iter_children_mut().map(|c| c.auto_merge()).sum();
@@ -216,7 +222,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// Same as [auto_merge](Self::auto_merge) but only traverse cells in
     /// the given path
     pub fn auto_merge_on_path(&mut self, mut path: CellPath) -> usize
-        where D: MergeableData
+        where D: MergeableData,
+              Ptr: MutableSvoPtr<D> + OwnedSvoPtr<D>,
     {
         let mut total = 0;
         match self {
@@ -238,7 +245,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// uses [D::split] to split the current cell
     /// returns true if a split happened, false otherwise
     pub fn split(&mut self) -> bool
-        where D: SplittableData
+        where D: SplittableData,
+              Ptr: OwnedSvoPtr<D>,
     {
         let mut did = false;
         utils::replace_with(self, |this| {
@@ -274,7 +282,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
 
     /// Like [Self::split] but checks with [D::should_auto_split] before
     pub fn try_split(&mut self) -> bool
-        where D: SplittableData
+        where D: SplittableData,
+              Ptr: OwnedSvoPtr<D>,
     {
         let mut did = false;
         utils::replace_with(self, |this| {
@@ -317,7 +326,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// 
     /// depth = 0 does nothing
     pub fn full_split(&mut self, depth: u32)
-        where D: SplittableData
+        where D: SplittableData,
+              Ptr: MutableSvoPtr<D> + OwnedSvoPtr<D>,
     {
         if depth == 0 {
             return;
@@ -332,7 +342,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// 
     /// max_depth = 0 does nothing
     pub fn auto_split(&mut self, max_depth: u32)
-        where D: SplittableData
+        where D: SplittableData,
+              Ptr: MutableSvoPtr<D> + OwnedSvoPtr<D>,
     {
         if max_depth == 0 {
             return;
@@ -344,7 +355,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// Same as [auto_split](Self::auto_split) but only traverse cells in
     /// the given path
     pub fn auto_split_on_path(&mut self, mut path: CellPath) -> usize
-        where D: SplittableData
+        where D: SplittableData,
+              Ptr: MutableSvoPtr<D> + OwnedSvoPtr<D>,
     {
         let mut total = 0;
 
@@ -375,6 +387,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     )
         where FP: FnMut(&CellPath, Cell<D, Ptr>) -> Cell<D, Ptr>,
               FS: FnMut(&CellPath, Cell<D, Ptr>) -> Cell<D, Ptr>,
+              Ptr: MutableSvoPtr<D>,
     {
         utils::replace_with(self, |cell| pref(&path, cell));
         self.iter_children_mut().zip(CellPath::components().into_iter())
@@ -391,7 +404,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// - for packed cells, a new internal cell is created by using
     ///   [PackedCell::split].
     pub fn to_internal(&mut self) -> &mut InternalCell<D, Ptr>
-        where D: SplittableData
+        where D: SplittableData,
+              Ptr: OwnedSvoPtr<D>,
     {
         if let Cell::Internal(i) = self {
             return i;
@@ -439,7 +453,9 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     }
 
     /// mut version of [follow_path](Self::follow_path)
-    pub fn follow_path_mut(&mut self, path: &CellPath) -> (CellPath, &mut Self) {
+    pub fn follow_path_mut(&mut self, path: &CellPath) -> (CellPath, &mut Self)
+        where Ptr: MutableSvoPtr<D>,
+    {
         let mut path = path.clone();
         let Some(x) = path.pop_back()
             else { return (CellPath::new(), self); };
@@ -455,7 +471,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
 
     /// Follows the given path, using [to_internal] at each node
     pub fn follow_internal_path(&mut self, path: &CellPath) -> &mut Cell<D, Ptr>
-        where D: SplittableData
+        where D: SplittableData,
+              Ptr: OwnedSvoPtr<D> + MutableSvoPtr<D>,
     {
         let mut path = path.clone();
         let Some(child) = path.pop_back()
@@ -495,7 +512,9 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     }
 
     /// mut version of [get_path]
-    pub fn get_path_mut(&mut self, mut path: CellPath) -> EitherDataMut<D> {
+    pub fn get_path_mut(&mut self, mut path: CellPath) -> EitherDataMut<D>
+        where Ptr: MutableSvoPtr<D>,
+    {
         let mut current = self;
         loop {
             match current {
@@ -516,7 +535,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     }
 
     pub fn map_all<F>(&mut self, update: &mut F)
-        where F: FnMut(EitherDataMut<D>) -> ()
+        where F: FnMut(EitherDataMut<D>) -> (),
+              Ptr: MutableSvoPtr<D>,
     {
         match self {
             Cell::Internal(_) | Cell::Leaf(_) => {
@@ -536,7 +556,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
 
     /// Updates all the internal data of all internal cells
     pub fn update_all(&mut self)
-        where D: AggregateData
+        where D: AggregateData,
+              Ptr: MutableSvoPtr<D>,
     {
         match self {
             Cell::Internal(i) => {
@@ -554,7 +575,8 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     ///
     /// if path is goes deeper than the cell the rest of the path is ignored
     pub fn update_on_path(&mut self, path: &CellPath)
-        where D: AggregateData
+        where D: AggregateData,
+              Ptr: MutableSvoPtr<D>,
     {
         let mut path = path.clone();
         match self {
@@ -582,7 +604,9 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
         }
     }
 
-    pub fn iter_children_mut(&mut self) -> impl Iterator<Item = &mut Cell<D, Ptr>> {
+    pub fn iter_children_mut(&mut self) -> impl Iterator<Item = &mut Cell<D, Ptr>>
+        where Ptr: MutableSvoPtr<D>
+    {
         match self {
             Cell::Internal(i) => Either::Left(i.children.iter_mut().map(Ptr::make_mut)),
             Cell::Leaf(_) => Either::Right(std::iter::empty()),
@@ -605,7 +629,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     /// The given data is used for leaf values, and the default for internal
     /// values.
     pub fn new_with_depth(depth: u32, data: D) -> Self
-        where Ptr: Clone,
+        where Ptr: Clone + OwnedSvoPtr<D>,
               D::Internal: Default,
     {
         if depth == 0 {
