@@ -16,8 +16,8 @@ pub const GRAVITY_SVO_UPDATE_SYSTEM_DURATION: DiagnosticPath =
 
 /// If set to true, when visiting the svo, cells that contains the current particle
 /// will always be visited
-const FORCE_VISIT_OWN_CELLS: bool = true;
+const FORCE_VISIT_OWN_CELLS: bool = false;
 
 /// If an svo has more than this amount of particles it is splitted if the
 /// max depth has not been reached
-const SVO_LEAF_MAX_PARTICLE_COUNT: usize = 100;
+const SVO_LEAF_MAX_PARTICLE_COUNT: usize = 50;

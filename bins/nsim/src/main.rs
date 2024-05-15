@@ -192,7 +192,7 @@ fn setup_system(
 
         sun_mass: 1_000_000_000.,
 
-        distance_range: 2_000.0..2_500.0,
+        distance_range: 8_000.0..8_500.0,
         mass_range: 100.0..10_000.,
     };
     commands.insert_resource(cfg.clone());
