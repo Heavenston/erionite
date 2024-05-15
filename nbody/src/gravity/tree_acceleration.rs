@@ -1,5 +1,6 @@
 use super::*;
 
+use std::cell::RefCell;
 use bevy::{math::DVec3, prelude::*};
 use svo::AggregateData as _;
 use utils::AsVecExt;
@@ -80,27 +81,47 @@ impl svo::SplittableData for SvoData {
     }
 
     fn split(self) -> (Self::Internal, [Self; 8]) {
+        std::thread_local! {
+            static TARGET_VEC: RefCell<Vec<u3>> = RefCell::new(Vec::new());
+        }
+
         let mut children = svo::CellPath::components().map(|_| SvoData {
             remaining_allowed_depth: self.remaining_allowed_depth.saturating_sub(1),
             ..default()
         });
 
-        for mut entity in self.entities {
-            let mut comp = 0b000u8;
-            if entity.pos.x > 0.5 {
-                comp |= 0b001;
+        TARGET_VEC.with(|targets| {
+            let mut targets = targets.borrow_mut();
+            targets.clear();
+
+            let mut counts = [0usize; 8];
+            self.entities.iter()
+                .map(|entity| {
+                    let mut comp = 0b000u8;
+                    if entity.pos.x > 0.5 {
+                        comp |= 0b001;
+                    }
+                    if entity.pos.y > 0.5 {
+                        comp |= 0b010;
+                    }
+                    if entity.pos.z > 0.5 {
+                        comp |= 0b100;
+                    }
+                    counts[comp as usize] += 1;
+                    u3::new(comp)
+                })
+                .collect_into(&mut *targets);
+
+            for i in 0..8usize {
+                children[i].entities.reserve_exact(counts[i]);
             }
-            if entity.pos.y > 0.5 {
-                comp |= 0b010;
+
+            for (mut entity, comp) in self.entities.into_iter().zip(targets.iter()) {
+                let sub_origin = comp.as_uvec().as_dvec3() / 2.;
+                entity.pos = (entity.pos - sub_origin) * 2.;
+                children[comp.value() as usize].entities.push(entity);
             }
-            if entity.pos.z > 0.5 {
-                comp |= 0b100;
-            }
-            let comp = u3::new(comp);
-            let sub_origin = comp.as_uvec().as_dvec3() / 2.;
-            entity.pos = (entity.pos - sub_origin) * 2.;
-            children[comp.value() as usize].entities.push(entity);
-        }
+        });
 
         let internal = SvoData::aggregate(
             children.each_ref().map(|leaf| Either::Right(leaf))
