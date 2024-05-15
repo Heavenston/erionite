@@ -1,7 +1,7 @@
 use super::*;
 
 use std::cell::RefCell;
-use bevy::{math::DVec3, prelude::*};
+use bevy::{math::DVec3, prelude::*, utils::smallvec::SmallVec};
 use svo::AggregateData as _;
 use utils::AsVecExt;
 use either::Either;
@@ -12,13 +12,13 @@ pub(super) struct SvoEntityRepr {
     pub entity: Entity,
     /// Pos is relative to the cell it is in
     /// between (0., 0., 0.) and (1., 1., 1.)
-    pub pos: DVec3,
+    pub pos: Vec3,
     pub mass: f64,
 }
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct SvoData {
-    pub entities: Vec<SvoEntityRepr>,
+    pub entities: SmallVec<[SvoEntityRepr; 2]>,
     pub remaining_allowed_depth: u8,
 }
 
@@ -60,7 +60,7 @@ impl svo::AggregateData for SvoData {
                     count += u32::try_from(leaf.entities.len()).expect("too much entities!!");
                     total_mass += leaf.entities.iter().map(|e| e.mass).sum::<f64>();
                     weighed_pos_sum += leaf.entities.iter()
-                        .map(|e| e.pos / 2. + sub_cell_min)
+                        .map(|e| e.pos.as_dvec3() / 2. + sub_cell_min)
                         .sum::<DVec3>();
                 },
             }
@@ -117,7 +117,7 @@ impl svo::SplittableData for SvoData {
             }
 
             for (mut entity, comp) in self.entities.into_iter().zip(targets.iter()) {
-                let sub_origin = comp.as_uvec().as_dvec3() / 2.;
+                let sub_origin = comp.as_uvec().as_vec3() / 2.;
                 entity.pos = (entity.pos - sub_origin) * 2.;
                 children[comp.value() as usize].entities.push(entity);
             }

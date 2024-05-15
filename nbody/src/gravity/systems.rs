@@ -59,7 +59,7 @@ pub(crate) fn update_svo_system(
                 entities: entity_transform_mass.iter()
                     .map(|(entity, transform, massive)| SvoEntityRepr {
                         entity,
-                        pos: (transform.translation() - root_aabb.position) / root_aabb.size,
+                        pos: ((transform.translation() - root_aabb.position) / root_aabb.size).as_vec3(),
                         mass: massive.mass,
                     })
                     .collect(),
@@ -245,7 +245,7 @@ fn compute_svo_gravity_field_util(
                     if entity_repr.entity == victim_entity {
                         continue 'entity_loop;
                     }
-                    let attractor_pos = aabb.position + aabb.size * entity_repr.pos;
+                    let attractor_pos = aabb.position + aabb.size * entity_repr.pos.as_dvec3();
 
                     let diff = attractor_pos - victim_pos;
                     if diff.is_zero_approx() {
