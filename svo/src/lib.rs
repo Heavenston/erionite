@@ -245,6 +245,43 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
         did_merge
     }
 
+    /// [BorrowedMergeableData] version fo [Self::try_merge]
+    pub fn try_merge_borrow(&mut self) -> bool
+        where D: BorrowedMergeableData,
+    {
+        let mut did_merge = false;
+        utils::replace_with(self, |this| {
+            let Self::Internal(InternalCell { data, children }) = this
+            else {
+                did_merge = true;
+                return this;
+            };
+
+            let Some(children_datas) = children.each_ref()
+                .try_map(|x| match &**x {
+                    Cell::Leaf(l) => Some(&l.data),
+                    _ => None,
+                })
+            else {
+                did_merge = false;
+                return Self::Internal(InternalCell { children, data });
+            };
+
+            if !D::should_auto_merge(&data, children_datas) {
+                did_merge = false;
+                return Self::Internal(InternalCell { children, data });
+            }
+
+            did_merge = true;
+        
+            LeafCell::new(
+                D::merge(&data, children_datas)
+            ).into()
+        });
+        
+        did_merge
+    }
+
     /// Calls [try_merge](Self::try_merge) on all children from bottom to up
     /// recursively and returns the numper of successfull merges
     pub fn auto_merge(&mut self) -> usize
@@ -264,6 +301,16 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
         let total: usize =
             self.iter_children_mut().map(|c| c.auto_merge_copy()).sum();
         total + if self.try_merge_copy() { 1 } else { 0 }
+    }
+
+    /// Like [Self::try_merge_borrow] (see [Self::auto_merge])
+    pub fn auto_merge_borrow(&mut self) -> usize
+        where D: BorrowedMergeableData,
+              Ptr: MutableSvoPtr<D>,
+    {
+        let total: usize =
+            self.iter_children_mut().map(|c| c.auto_merge_borrow()).sum();
+        total + if self.try_merge_borrow() { 1 } else { 0 }
     }
 
     /// Same as [auto_merge](Self::auto_merge) but only traverse cells in

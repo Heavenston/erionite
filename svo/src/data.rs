@@ -38,6 +38,20 @@ pub trait MergeableData: Data {
     ) -> Self;
 }
 
+pub trait BorrowedMergeableData: Data {
+    fn should_auto_merge(
+        _this: &Self::Internal,
+        _children: [&Self; 8]
+    ) -> bool {
+        false
+    }
+
+    fn merge(
+        this: &Self::Internal,
+        children: [&Self; 8]
+    ) -> Self;
+}
+
 pub trait AggregateData: Data {
     fn aggregate<'a>(
         children: [EitherDataRef<Self>; 8]
