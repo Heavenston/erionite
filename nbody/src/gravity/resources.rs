@@ -17,9 +17,39 @@ pub struct GravityConfig {
     pub svo_skip_threshold: f64,
 }
 
+#[ouroboros::self_referencing]
+pub(super) struct GravitySvoAlloc {
+    pub(super) herd: bumpalo_herd::Herd,
+    #[borrows(herd)]
+    #[not_covariant]
+    pub(super) root_cell: Option<svo::BumpCell::<'this, SvoData>>,
+}
+
+impl GravitySvoAlloc {
+    pub fn build_svo<F>(&mut self, f: F)
+        where F: for<'a> FnOnce(&'a bumpalo_herd::Herd) -> svo::BumpCell::<'a, SvoData>
+    {
+        utils::replace_with(self, |this| {
+            let mut herd = this.into_heads().herd;
+            herd.reset();
+
+            GravitySvoAllocBuilder {
+                herd,
+                root_cell_builder: move |herd| Some(f(herd)),
+            }.build()
+        });
+    }
+}
+
+impl Default for GravitySvoAlloc {
+    fn default() -> Self {
+        Self::new(default(), |_| default())
+    }
+}
+
 #[derive(Resource)]
 pub struct GravitySvoContext {
-    pub(super) root_cell: Option<svo::BoxCell<SvoData>>,
+    pub(super) alloc: GravitySvoAlloc,
     pub(super) root_aabb: DAabb,
     pub(super) max_depth: u32,
 }
@@ -27,7 +57,7 @@ pub struct GravitySvoContext {
 impl Default for GravitySvoContext {
     fn default() -> Self {
         Self {
-            root_cell: default(),
+            alloc: default(),
             root_aabb: DAabb::new_center_size(DVec3::zero(), DVec3::splat(100_000f64)),
             max_depth: 20,
         }
@@ -36,7 +66,9 @@ impl Default for GravitySvoContext {
 
 impl GravitySvoContext {
     pub fn depth(&self) -> u32 {
-        self.root_cell.as_ref().map(|svo| svo.depth()).unwrap_or(0)
+        self.alloc.with_root_cell(|root_cell| {
+            root_cell.as_ref().map(|svo| svo.depth()).unwrap_or(0)
+        })
     }
 
     pub fn max_depth(&self) -> u32 {
