@@ -1,8 +1,33 @@
-use bevy::{math::DVec3, prelude::*, utils::HashSet};
+use std::time::Instant;
+
+use bevy::{diagnostic::Diagnostics, math::DVec3, prelude::*, utils::HashSet};
 use crate::components::{ GlobalTransform64, Transform64, FloatingOrigin };
 
 #[derive(SystemSet, Debug, Hash, Default, Clone, Copy, PartialEq, Eq)]
 pub struct TransformSystems;
+
+#[derive(Resource, Debug, Default)]
+pub(crate) struct PropagStart(pub Option<Instant>);
+
+/// When first called it register the current time
+/// the second time it saves the elapsed time as a diagnostic
+pub(crate) fn propagate_start_end_system(
+    mut diagnostics: Diagnostics,
+
+    mut time: ResMut<PropagStart>,
+) {
+    match *time {
+        PropagStart(Some(i)) => {
+            diagnostics.add_measurement(&crate::TRANSFORM_SYSTEMS_DURATION_DIAG, || {
+                i.elapsed().as_millis_f64()
+            });
+            *time = PropagStart(None);
+        },
+        PropagStart(None) => {
+            *time = PropagStart(Some(Instant::now()));
+        },
+    }
+}
 
 /// Propagate normal transforms for entities without any transform64
 /// This is to make ui nodes still work
