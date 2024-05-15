@@ -4,6 +4,10 @@ mod boxed;
 pub use boxed::*;
 mod bumpbox;
 pub use bumpbox::*;
+mod refed;
+pub use refed::*;
+mod mutrefed;
+pub use mutrefed::*;
 
 use std::ops::Deref;
 
