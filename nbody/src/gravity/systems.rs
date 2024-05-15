@@ -6,7 +6,7 @@ use bevy::{diagnostic::Diagnostics, math::DVec3, prelude::*};
 use doprec::GlobalTransform64;
 #[cfg(feature = "rapier")]
 use rapier_overlay::*;
-use svo::{InternalCell, LeafCell, SplittableData};
+use svo::SplittableData as _;
 use utils::{DAabb, IsZeroApprox};
 use bumpalo::boxed::Box as BumpBox;
 
@@ -74,10 +74,10 @@ pub(crate) fn update_svo_system(
                     svo::Cell::Leaf(l) => {
                         if l.data.should_auto_split() {
                             let (data, splitted) = l.data.split();
-                            InternalCell {
+                            svo::InternalCell {
                                 children: splitted.map(|child_data| { svo::BumpBoxPtr(
                                     unsafe { BumpBox::from_raw(
-                                        member.alloc(LeafCell::new(child_data).into())
+                                        member.alloc(svo::LeafCell::new(child_data).into())
                                     ) }
                                 ) }),
                                 data,
@@ -91,6 +91,7 @@ pub(crate) fn update_svo_system(
                 }
             }, &mut |_, c| c,
         );
+        root_cell.auto_merge_borrow();
 
         for item in root_cell.iter() {
             let mut iter = attractors.iter_many_mut(

@@ -1,13 +1,13 @@
 use super::*;
 
 use std::cell::RefCell;
-use bevy::{math::DVec3, prelude::*, utils::smallvec::SmallVec};
+use bevy::{math::DVec3, prelude::*};
 use svo::AggregateData as _;
 use utils::AsVecExt;
 use either::Either;
 use arbitrary_int::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(super) struct SvoEntityRepr {
     pub entity: Entity,
     /// Pos is relative to the cell it is in
@@ -18,7 +18,7 @@ pub(super) struct SvoEntityRepr {
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct SvoData {
-    pub entities: SmallVec<[SvoEntityRepr; 2]>,
+    pub entities: Vec<SvoEntityRepr>,
     pub remaining_allowed_depth: u8,
 }
 
@@ -93,6 +93,7 @@ impl svo::SplittableData for SvoData {
         TARGET_VEC.with(|targets| {
             let mut targets = targets.borrow_mut();
             targets.clear();
+            targets.reserve(self.entities.len());
 
             let mut counts = [0usize; 8];
             self.entities.iter()
@@ -128,5 +129,34 @@ impl svo::SplittableData for SvoData {
         );
 
         (internal, children)
+    }
+}
+
+impl svo::BorrowedMergeableData for SvoData {
+    fn should_auto_merge(
+        _this: &Self::Internal,
+        children: [&Self; 8]
+    ) -> bool {
+        let small_count = children.iter()
+            .filter(|data| data.entities.len() < SVO_LEAF_MIN_PARTICLE_COUNT)
+            .count();
+
+        // Should merge if all but one leaf is under the minimum
+        // so that if there is 100 in one leaf but only 5 in the other its not worth splitting
+        small_count >= 7
+    }
+
+    fn merge(
+        _this: &Self::Internal,
+        children: [&Self; 8]
+    ) -> Self {
+        Self {
+            remaining_allowed_depth: children.iter()
+                .map(|p| p.remaining_allowed_depth)
+                .max().unwrap_or_default() + 1,
+            entities: children.into_iter()
+                .flat_map(|data| data.entities.iter().copied())
+                .collect(),
+        }
     }
 }
