@@ -1,7 +1,8 @@
+use arbitrary_int::u3;
 use bevy_math::{bounding::Aabb3d, DVec3};
 use bevy_render::primitives::Aabb;
 
-use crate::AabbExt;
+use crate::{AabbExt, AsVecExt};
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct DAabb {
@@ -88,6 +89,17 @@ impl DAabb {
     pub fn expand_to_contain(&mut self, point: DVec3) {
         self.set_min(self.min().min(point));
         self.set_max(self.max().max(point));
+    }
+
+    pub fn octdivide(&mut self, comp: u3) {
+        self.size /= 2.;
+        self.position += comp.as_uvec().as_dvec3() * self.size;
+    }
+
+    pub fn octdivided(mut self, comp: u3) -> Self {
+        self.size /= 2.;
+        self.position += comp.as_uvec().as_dvec3() * self.size;
+        self
     }
 }
 

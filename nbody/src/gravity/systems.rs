@@ -2,6 +2,7 @@ use super::*;
 
 use std::time::Instant;
 
+use arbitrary_int::u3;
 use bevy::{diagnostic::Diagnostics, math::DVec3, prelude::*};
 use doprec::GlobalTransform64;
 #[cfg(feature = "rapier")]
@@ -181,6 +182,7 @@ fn compute_svo_gravity_field_util(
     cfg: &GravityConfig,
     root_aabb: DAabb,
     root_cell: &svo::BumpCell<'_, SvoData>,
+    max_depth: u32,
 
     victim_entity: Entity,
     victim_pos: &GlobalTransform64,
@@ -195,10 +197,32 @@ fn compute_svo_gravity_field_util(
         root_cell,
         svo::CellPath::new(),
         root_aabb,
+        None::<u3>,
     )];
-    'svo_loop: while let Some((cell, path, aabb)) = cell_stack.pop() {
+    cell_stack.reserve(max_depth as usize);
+    'svo_loop: while let Some((cell, path, aabb, current_children)) = cell_stack.pop() {
         match cell {
             svo::Cell::Internal(internal) => {
+                if let Some(cc) = current_children {
+                    // Re-push current cell for next child if any
+                    if cc != u3::new(0b111) {
+                        cell_stack.push((
+                            cell,
+                            path.clone(),
+                            aabb,
+                            Some(u3::new(cc.value() + 1)),
+                        ));
+                    }
+                    // Push child
+                    cell_stack.push((
+                        internal.get_child(cc),
+                        path.clone().with_push(cc),
+                        aabb.octdivided(cc),
+                        None,
+                    ));
+                    continue 'svo_loop;
+                }
+
                 'simplified: {
                     let mut stats = internal.data;
 
@@ -233,14 +257,13 @@ fn compute_svo_gravity_field_util(
                     continue 'svo_loop;
                 }
 
-                for comp in svo::CellPath::components() {
-                    cell_stack.push((
-                        internal.get_child(comp),
-                        path.clone().with_push(comp),
-                        svo::CellPath::new().with_push(comp).get_aabb(aabb),
-                    ));
-                }
-
+                // With Some(0) each child will be seen
+                cell_stack.push((
+                    cell,
+                    path.clone(),
+                    aabb,
+                    Some(u3::new(0)),
+                ));
             },
             svo::Cell::Leaf(l) => {
                 'entity_loop: for entity_repr in &l.data.entities {
@@ -296,6 +319,7 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
     let start = Instant::now();
 
     let root_aabb = svo_ctx.root_aabb;
+    let max_depth = svo_ctx.max_depth;
     svo_ctx.alloc.with_root_cell(|root_cell| {
         let Some(root_cell) = root_cell
         else { return; };
@@ -305,6 +329,7 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
         )| {
             compute_svo_gravity_field_util(
                 &*cfg, root_aabb, root_cell,
+                max_depth,
                 victim_entity,
                 victim_pos,
                 victim_sample,

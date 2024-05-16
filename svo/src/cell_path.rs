@@ -144,15 +144,9 @@ impl CellPath {
     }
 
     #[inline]
-    pub fn get_aabb(&self, mut root: DAabb) -> DAabb {
-        for x in self {
-            root.size /= 2.;
-            root.position = DVec3::select(
-                x.as_bvec(),
-                root.position + root.size, root.position
-            );
-        }
-        root
+    pub fn get_aabb(&self, root: DAabb) -> DAabb {
+        self.into_iter()
+            .fold(root, |aabb, x| aabb.octdivided(x))
     }
 
     /// Get the position of the cell considering one unit per cell of the current
