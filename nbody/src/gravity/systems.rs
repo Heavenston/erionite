@@ -52,7 +52,6 @@ pub(crate) fn update_svo_system(
 
     let max_depth = svo_ctx.max_depth;
     svo_ctx.alloc.build_svo(|herd| {
-        let member = herd.get();
 
         let mut root_cell: svo::BumpCell<SvoData> = svo::LeafCell {
             data: SvoData {
@@ -68,8 +67,10 @@ pub(crate) fn update_svo_system(
             },
         }.into();
 
-        root_cell.auto_replace_with(
-            default(), &mut |_, c| {
+        root_cell.par_auto_replace_with(
+            default(), &|_, c| {
+                let member = herd.get();
+
                 match c {
                     svo::Cell::Leaf(l) => {
                         if l.data.should_auto_split() {
@@ -89,7 +90,7 @@ pub(crate) fn update_svo_system(
                     },
                     other => other,
                 }
-            }, &mut |_, c| c,
+            }, &|_, c| c,
         );
         root_cell.auto_merge_borrow();
 

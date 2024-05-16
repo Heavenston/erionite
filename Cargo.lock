@@ -3583,6 +3583,7 @@ dependencies = [
  "itertools",
  "num-traits",
  "ordered-float",
+ "rayon",
  "serde",
  "utils",
 ]

@@ -27,6 +27,7 @@ pub mod mesh_generation;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use rayon::prelude::*;
 use either::Either;
 use arbitrary_int::*;
 use itertools::Itertools;
@@ -488,6 +489,29 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
             .for_each(|(child, comp)| {
                 child.auto_replace_with(path.clone().with_push(comp), pref, suff);
             });
+        utils::replace_with(self, |cell| suff(&path, cell));
+    }
+
+    pub fn par_auto_replace_with<FP, FS>(
+        &mut self,
+        path: CellPath,
+        pref: &FP,
+        suff: &FS,
+    )
+        where FP: Send + Sync + Fn(&CellPath, Cell<D, Ptr>) -> Cell<D, Ptr>,
+              FS: Send + Sync + Fn(&CellPath, Cell<D, Ptr>) -> Cell<D, Ptr>,
+              Ptr: Send + MutableSvoPtr<D>,
+    {
+        utils::replace_with(self, |cell| pref(&path, cell));
+        if let Self::Internal(internal) = self {
+            internal.children.as_mut_slice()
+                .par_iter_mut()
+                .zip(CellPath::components().into_par_iter())
+                .for_each(|(child, comp)| {
+                    child.make_mut()
+                        .par_auto_replace_with(path.clone().with_push(comp), pref, suff);
+                });
+        }
         utils::replace_with(self, |cell| suff(&path, cell));
     }
 
