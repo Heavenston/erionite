@@ -223,7 +223,7 @@ fn compute_svo_gravity_field_util(
                     let distance_to_com = distance_to_com_squared.sqrt();
                     let ratio = region_width / distance_to_com;
 
-                    if ratio > cfg.svo_skip_threshold {
+                    if stats.count != 1 && ratio > cfg.svo_skip_threshold {
                         break 'simplified;
                     }
                     
