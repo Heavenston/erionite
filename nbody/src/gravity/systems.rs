@@ -193,33 +193,39 @@ fn compute_svo_gravity_field_util(
 
     let mut total_force = DVec3::ZERO;
 
-    let mut cell_stack = vec![(
-        root_cell,
-        svo::CellPath::new(),
-        root_aabb,
-        None::<u3>,
-    )];
-    cell_stack.reserve(max_depth as usize);
-    'svo_loop: while let Some((cell, path, aabb, current_children)) = cell_stack.pop() {
-        match cell {
+    #[derive(Debug, Clone)]
+    struct CellStep<'a, 'b> {
+        cell: &'a svo::BumpCell<'b, SvoData>,
+        path: svo::CellPath,
+        aabb: DAabb,
+        current_child: Option<u3>,
+    }
+
+    let mut cell_stack = Vec::with_capacity(max_depth as usize);
+    cell_stack.push(CellStep {
+        cell: root_cell,
+        path: svo::CellPath::default(),
+        aabb: root_aabb,
+        current_child: None,
+    });
+    'svo_loop: while let Some(step) = cell_stack.pop() {
+        match step.cell {
             svo::Cell::Internal(internal) => {
-                if let Some(cc) = current_children {
+                if let Some(current_child) = step.current_child {
                     // Re-push current cell for next child if any
-                    if cc != u3::new(0b111) {
-                        cell_stack.push((
-                            cell,
-                            path.clone(),
-                            aabb,
-                            Some(u3::new(cc.value() + 1)),
-                        ));
+                    if current_child != u3::new(0b111) {
+                        cell_stack.push(CellStep {
+                            current_child: Some(u3::new(current_child.value() + 1)),
+                            ..step.clone()
+                        });
                     }
                     // Push child
-                    cell_stack.push((
-                        internal.get_child(cc),
-                        path.clone().with_push(cc),
-                        aabb.octdivided(cc),
-                        None,
-                    ));
+                    cell_stack.push(CellStep {
+                        cell: internal.get_child(current_child),
+                        path: step.path.clone().with_push(current_child),
+                        aabb: step.aabb.octdivided(current_child),
+                        current_child: None,
+                    });
                     continue 'svo_loop;
                 }
 
@@ -228,12 +234,12 @@ fn compute_svo_gravity_field_util(
 
                     if let Some((victim_mass, victim_attractor)) = victim_attractor_bundle {
                         let contains_victim = victim_attractor.last_svo_position.as_ref()
-                            .is_some_and(|pos| path.is_prefix_of(pos));
+                            .is_some_and(|pos| step.path.is_prefix_of(pos));
                         if contains_victim && FORCE_VISIT_OWN_CELLS {
                             break 'simplified;
                         }
                         if contains_victim {
-                            let relative_pos = (victim_pos - aabb.position) / aabb.size;
+                            let relative_pos = (victim_pos - step.aabb.position) / step.aabb.size;
                             stats.center_of_mass -=
                                 (relative_pos * victim_mass.mass) / stats.total_mass;
                             stats.total_mass -= victim_mass.mass;
@@ -241,7 +247,7 @@ fn compute_svo_gravity_field_util(
                         }
                     }
 
-                    let region_width = aabb.size.x;
+                    let region_width = step.aabb.size.x;
                     let diff_to_com = stats.center_of_mass - victim_pos;
                     let distance_to_com_squared = diff_to_com.length_squared();
                     let distance_to_com = distance_to_com_squared.sqrt();
@@ -258,19 +264,17 @@ fn compute_svo_gravity_field_util(
                 }
 
                 // With Some(0) each child will be seen
-                cell_stack.push((
-                    cell,
-                    path.clone(),
-                    aabb,
-                    Some(u3::new(0)),
-                ));
+                cell_stack.push(CellStep {
+                    current_child: Some(u3::new(0)),
+                    ..step
+                });
             },
             svo::Cell::Leaf(l) => {
                 'entity_loop: for entity_repr in &l.data.entities {
                     if entity_repr.entity == victim_entity {
                         continue 'entity_loop;
                     }
-                    let attractor_pos = aabb.position + aabb.size * entity_repr.pos.as_dvec3();
+                    let attractor_pos = step.aabb.position + step.aabb.size * entity_repr.pos.as_dvec3();
 
                     let diff = attractor_pos - victim_pos;
                     if diff.is_zero_approx() {
