@@ -3,27 +3,27 @@ use super::*;
 use std::cell::RefCell;
 use bevy::{math::DVec3, prelude::*};
 use svo::AggregateData as _;
-use utils::AsVecExt;
+use utils::DAabb;
 use either::Either;
 use arbitrary_int::*;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct SvoEntityRepr {
     pub entity: Entity,
-    /// Pos is relative to the cell it is in
-    /// between (0., 0., 0.) and (1., 1., 1.)
-    pub pos: Vec3,
+    pub global_pos: DVec3,
     pub mass: f64,
 }
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct SvoData {
+    pub aabb: DAabb,
     pub entities: Vec<SvoEntityRepr>,
     pub remaining_allowed_depth: u8,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(super) struct SvoInternalData {
+    pub aabb: DAabb,
     pub count: u32,
     pub total_mass: f64,
     /// Relative to the AABB -> 0,0 for the min corner and 1,1 for the max corner
@@ -46,27 +46,31 @@ impl svo::AggregateData for SvoData {
         let mut total_mass = 0f64;
         let mut weighed_pos_sum = DVec3::ZERO;
 
-        for (comp, cell) in svo::CellPath::components().iter().zip(children.into_iter()) {
-            let sub_cell_min = comp.as_uvec().as_dvec3() / 2.;
+        for cell in children.iter() {
             match cell {
                 Either::Left(internal) => {
                     count += internal.count;
                     total_mass += internal.total_mass;
-                    weighed_pos_sum += internal.total_mass * (
-                        internal.center_of_mass / 2. + sub_cell_min
-                    );
+                    weighed_pos_sum += internal.center_of_mass * internal.total_mass;
                 },
                 Either::Right(leaf) => {
                     count += u32::try_from(leaf.entities.len()).expect("too much entities!!");
                     total_mass += leaf.entities.iter().map(|e| e.mass).sum::<f64>();
-                    weighed_pos_sum += leaf.entities.iter()
-                        .map(|e| e.pos.as_dvec3() / 2. + sub_cell_min)
-                        .sum::<DVec3>();
+                    weighed_pos_sum += leaf.entities.iter().map(|e| e.global_pos * e.mass).sum::<DVec3>();
                 },
             }
         }
 
+        let aabb = children.iter()
+            .map(|c| match c {
+                Either::Left(l) => l.aabb,
+                Either::Right(r) => r.aabb,
+            })
+            .reduce(|mut a, b| {a.expand_to_contain_aabb(b); a})
+            .expect("non empty");
+
         SvoInternalData {
+            aabb,
             total_mass,
             count,
             center_of_mass: weighed_pos_sum / total_mass,
@@ -85,10 +89,14 @@ impl svo::SplittableData for SvoData {
             static TARGET_VEC: RefCell<Vec<u3>> = RefCell::new(Vec::new());
         }
 
-        let mut children = svo::CellPath::components().map(|_| SvoData {
+        let mut children = svo::CellPath::components().map(|comp| SvoData {
+            aabb: self.aabb.octdivided(comp),
             remaining_allowed_depth: self.remaining_allowed_depth.saturating_sub(1),
-            ..default()
+            entities: vec![],
         });
+
+        let half_size = self.aabb.size / 2.;
+        let middle = self.aabb.position + half_size;
 
         TARGET_VEC.with(|targets| {
             let mut targets = targets.borrow_mut();
@@ -99,13 +107,13 @@ impl svo::SplittableData for SvoData {
             self.entities.iter()
                 .map(|entity| {
                     let mut comp = 0b000u8;
-                    if entity.pos.x > 0.5 {
+                    if entity.global_pos.x > middle.x {
                         comp |= 0b001;
                     }
-                    if entity.pos.y > 0.5 {
+                    if entity.global_pos.y > middle.y {
                         comp |= 0b010;
                     }
-                    if entity.pos.z > 0.5 {
+                    if entity.global_pos.z > middle.z {
                         comp |= 0b100;
                     }
                     counts[comp as usize] += 1;
@@ -117,9 +125,7 @@ impl svo::SplittableData for SvoData {
                 children[i].entities.reserve_exact(counts[i]);
             }
 
-            for (mut entity, comp) in self.entities.into_iter().zip(targets.iter()) {
-                let sub_origin = comp.as_uvec().as_vec3() / 2.;
-                entity.pos = (entity.pos - sub_origin) * 2.;
+            for (entity, comp) in self.entities.into_iter().zip(targets.iter()) {
                 children[comp.value() as usize].entities.push(entity);
             }
         });
@@ -147,10 +153,11 @@ impl svo::BorrowedMergeableData for SvoData {
     }
 
     fn merge(
-        _this: &Self::Internal,
+        this: &Self::Internal,
         children: [&Self; 8]
     ) -> Self {
         Self {
+            aabb: this.aabb,
             remaining_allowed_depth: children.iter()
                 .map(|p| p.remaining_allowed_depth)
                 .max().unwrap_or_default() + 1,

@@ -44,22 +44,22 @@ pub(crate) fn update_svo_system(
         return;
     }
 
-    let mut root_aabb = DAabb::new_center_size(DVec3::ZERO, DVec3::ONE);
-    transforms.iter()
-        .for_each(|transform|
-            root_aabb.expand_to_contain(transform.translation())
-        );
+    let root_aabb = transforms.iter()
+        .fold(DAabb::new_center_size(DVec3::ZERO, DVec3::ONE), |mut aabb, transform| {
+           aabb.expand_to_contain_point(transform.translation());
+           aabb
+        });
     svo_ctx.root_aabb = root_aabb;
 
     let max_depth = svo_ctx.max_depth;
     svo_ctx.alloc.build_svo(|herd| {
-
         let mut root_cell: svo::BumpCell<SvoData> = svo::LeafCell {
             data: SvoData {
+                aabb: root_aabb,
                 entities: entity_transform_mass.iter()
                     .map(|(entity, transform, massive)| SvoEntityRepr {
                         entity,
-                        pos: ((transform.translation() - root_aabb.position) / root_aabb.size).as_vec3(),
+                        global_pos: transform.translation(),
                         mass: massive.mass,
                     })
                     .collect(),
@@ -180,7 +180,7 @@ pub(crate) fn compute_gravity_field_system_no_svo(
 /// Does the actual svo traversal for a given victim
 fn compute_svo_gravity_field_util(
     cfg: &GravityConfig,
-    root_aabb: DAabb,
+    _root_aabb: DAabb,
     root_cell: &svo::BumpCell<'_, SvoData>,
     max_depth: u32,
 
@@ -197,7 +197,6 @@ fn compute_svo_gravity_field_util(
     struct CellStep<'a, 'b> {
         cell: &'a svo::BumpCell<'b, SvoData>,
         path: svo::CellPath,
-        aabb: DAabb,
         current_child: Option<u3>,
     }
 
@@ -205,7 +204,6 @@ fn compute_svo_gravity_field_util(
     cell_stack.push(CellStep {
         cell: root_cell,
         path: svo::CellPath::default(),
-        aabb: root_aabb,
         current_child: None,
     });
     'svo_loop: while let Some(step) = cell_stack.pop() {
@@ -223,7 +221,6 @@ fn compute_svo_gravity_field_util(
                     cell_stack.push(CellStep {
                         cell: internal.get_child(current_child),
                         path: step.path.clone().with_push(current_child),
-                        aabb: step.aabb.octdivided(current_child),
                         current_child: None,
                     });
                     continue 'svo_loop;
@@ -239,15 +236,14 @@ fn compute_svo_gravity_field_util(
                             break 'simplified;
                         }
                         if contains_victim {
-                            let relative_pos = (victim_pos - step.aabb.position) / step.aabb.size;
                             stats.center_of_mass -=
-                                (relative_pos * victim_mass.mass) / stats.total_mass;
+                                (victim_pos * victim_mass.mass) / stats.total_mass;
                             stats.total_mass -= victim_mass.mass;
                             stats.count -= 1;
                         }
                     }
 
-                    let region_width = step.aabb.size.x;
+                    let region_width = stats.aabb.size.x;
                     let diff_to_com = stats.center_of_mass - victim_pos;
                     let distance_to_com_squared = diff_to_com.length_squared();
                     let distance_to_com = distance_to_com_squared.sqrt();
@@ -274,7 +270,7 @@ fn compute_svo_gravity_field_util(
                     if entity_repr.entity == victim_entity {
                         continue 'entity_loop;
                     }
-                    let attractor_pos = step.aabb.position + step.aabb.size * entity_repr.pos.as_dvec3();
+                    let attractor_pos = entity_repr.global_pos;
 
                     let diff = attractor_pos - victim_pos;
                     if diff.is_zero_approx() {

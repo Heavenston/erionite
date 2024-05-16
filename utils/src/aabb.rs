@@ -86,9 +86,14 @@ impl DAabb {
             && (!self.fully_contained_in_sphere(sphere_origin, sphere_radius))
     }
 
-    pub fn expand_to_contain(&mut self, point: DVec3) {
-        self.set_min(self.min().min(point));
-        self.set_max(self.max().max(point));
+    pub fn expand_to_contain_aabb(&mut self, aabb: DAabb) {
+        self.set_min(DVec3::min(self.min(), aabb.min()));
+        self.set_max(DVec3::max(self.max(), aabb.max()));
+    }
+
+    pub fn expand_to_contain_point(&mut self, point: DVec3) {
+        self.set_min(DVec3::min(self.min(), point));
+        self.set_max(DVec3::max(self.max(), point));
     }
 
     pub fn octdivide(&mut self, comp: u3) {
