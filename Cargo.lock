@@ -2596,6 +2596,7 @@ dependencies = [
  "ouroboros",
  "rapier_overlay",
  "svo",
+ "thread_local",
  "utils",
 ]
 

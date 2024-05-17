@@ -68,9 +68,11 @@ pub(crate) fn update_svo_system(
             },
         }.into();
 
+        let herd_local = thread_local::ThreadLocal::new();
+
         root_cell.par_auto_replace_with(
             default(), &|_, c| {
-                let member = herd.get();
+                let member = herd_local.get_or(|| herd.get());
 
                 match c {
                     svo::Cell::Leaf(l) => {
