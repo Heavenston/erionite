@@ -56,6 +56,7 @@ fn main() {
         ))
         .add_systems(FixedUpdate, (
             particle_merge_system,
+            particle_destroy_system,
             position_integration_system,
         ).after(nbody::GravitySystems))
 
@@ -89,6 +90,8 @@ pub struct ParticleConfig {
     pub mass_range: Range<f64>,
 
     pub max_distance: f64,
+
+    pub enable_collision_detection: bool,
 }
 
 #[derive(Bundle, Debug)]
@@ -135,7 +138,7 @@ impl ParticleBundle {
             particle: Particle { radius },
             velocity: default(),
             gravity_field_sample: nbody::GravityFieldSample {
-                min_affect_distance: 1.,
+                min_affect_distance: radius / 2.,
                 ..default()
             },
             massive: nbody::Massive { mass },
@@ -211,6 +214,8 @@ fn setup_system(
         mass_range: 100.0..10_000.,
 
         max_distance: 10_000.,
+
+        enable_collision_detection: false,
     };
     commands.insert_resource(cfg.clone());
     
@@ -293,7 +298,7 @@ fn update_debug_text_system(
     mut commands: Commands,
 
     diagnostics: Res<DiagnosticsStore>,
-    cfg: Res<ParticleConfig>,
+    mut cfg: ResMut<ParticleConfig>,
     mut gravity_cfg: ResMut<nbody::GravityConfig>,
     gravity_svo_ctx: Res<nbody::GravitySvoContext>,
 
@@ -330,6 +335,12 @@ fn update_debug_text_system(
         .and_then(|diag| diag.smoothed())
         .unwrap_or(0.);
 
+    let collision_info = if cfg.enable_collision_detection {
+        format!("{collision_compute_duration:.3} ms")
+    } else {
+        format!("disabled")
+    };
+
     let cam_pos = cam_transform.translation;
     let cam_speed = orbit_cam.movement_speed;
 
@@ -360,6 +371,9 @@ fn update_debug_text_system(
             &mut *materials, &mut *meshes, 500,
         );
     }
+    if kb_input.just_pressed(KeyCode::KeyC) {
+        cfg.enable_collision_detection = !cfg.enable_collision_detection;
+    }
 
     let svo_depth = gravity_svo_ctx.depth();
     let svo_max_depth = gravity_svo_ctx.max_depth();
@@ -373,7 +387,7 @@ fn update_debug_text_system(
     - Transform propagation: {transform_propagation_duration:.3} ms\n\
     - Svo update: {svo_update_duration:.3} ms\n\
     - Gravity compute: {grav_compute_duration:.3} ms\n\
-    - Collision detection: {collision_compute_duration:.3} ms\n\
+    - Collision detection: {collision_info} (use 'c' to toggle)\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
     Particles: count {particle_count} (press 'p' to spawn more),\n   total energy: {energy:.2}\n\
     Svo: {svo_state} (press 's' to toggle), depth: {svo_depth}/{svo_max_depth}, theta: {svo_theta:.2} (+/- {theta_step})\n\
@@ -418,6 +432,10 @@ fn particle_merge_system(
 
     particle_query: Query<(Entity, &Transform64, &ParticleVelocity, &nbody::GravityFieldSample, &nbody::Massive, &Particle)>,
 ) {
+    if !cfg.enable_collision_detection {
+        return;
+    }
+
     let start = Instant::now();
     let mut destroyed = HashSet::<Entity>::new();
 
