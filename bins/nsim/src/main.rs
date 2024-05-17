@@ -87,6 +87,8 @@ pub struct ParticleConfig {
 
     pub distance_range: Range<f64>,
     pub mass_range: Range<f64>,
+
+    pub max_distance: f64,
 }
 
 #[derive(Bundle, Debug)]
@@ -194,6 +196,8 @@ fn setup_system(
 
         distance_range: 8_000.0..8_500.0,
         mass_range: 100.0..10_000.,
+
+        max_distance: 10_000.,
     };
     commands.insert_resource(cfg.clone());
     
@@ -472,6 +476,21 @@ fn particle_merge_system(
     }
 
     diagnostics.add_measurement(&COLLISION_DIAG, || start.elapsed().as_millis_f64())
+}
+
+// destroy particles if the go to far
+fn particle_destroy_system(
+    mut commands: Commands,
+
+    cfg: Res<ParticleConfig>,
+
+    particle_query: Query<(Entity, &Transform64), With<Particle>>,
+) {
+    for (entity, transform) in &particle_query {
+        if transform.translation.length() > cfg.max_distance {
+            commands.entity(entity).despawn();
+        }
+    }
 }
 
 fn position_integration_system(
