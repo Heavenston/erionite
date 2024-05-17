@@ -55,7 +55,7 @@ fn main() {
             update_debug_text_system,
         ))
         .add_systems(FixedUpdate, (
-            particle_merge_system.run_if(|| false),
+            particle_merge_system,
             position_integration_system,
         ).after(nbody::GravitySystems))
 
@@ -134,7 +134,10 @@ impl ParticleBundle {
             material,
             particle: Particle { radius },
             velocity: default(),
-            gravity_field_sample: default(),
+            gravity_field_sample: nbody::GravityFieldSample {
+                min_affect_distance: 1.,
+                ..default()
+            },
             massive: nbody::Massive { mass },
             attracted: default(),
             attractor: default(),
@@ -154,12 +157,22 @@ fn spawn_particles(
 ) {
     let mut rng = SmallRng::from_entropy();
 
-    for _ in 0..count {
-        let distance = rng.gen_range(cfg.distance_range.clone());
-        let angle = rng.gen_range(-std::f64::consts::PI..std::f64::consts::PI);
-        let mass = rng.gen_range(cfg.mass_range.clone());
+    let mass_distributions = rand_distr::Normal::new(
+        (cfg.mass_range.start + cfg.mass_range.end) / 2.,
+        ((cfg.mass_range.end - cfg.mass_range.start).powi(2) / 12.).sqrt(),
+    ).unwrap();
+    let distance_distribution = rand_distr::Normal::new(
+        (cfg.distance_range.start + cfg.distance_range.end) / 2.,
+        ((cfg.distance_range.end - cfg.distance_range.start).powi(2) / 12.).sqrt(),
+    ).unwrap();
 
-        let pos = DQuat::from_rotation_y(angle) * DVec3::new(0., 0., 1.) * distance;
+    for _ in 0..count {
+        let distance = rng.sample(distance_distribution);
+        let angle = rng.gen_range(-std::f64::consts::PI..std::f64::consts::PI);
+        let mass = rng.sample(mass_distributions);
+
+        let mut pos = DQuat::from_rotation_y(angle) * DVec3::new(0., 0., 1.) * distance;
+        pos.y += rng.gen_range(-1.0..1.0);
         let vel_norm = ((gravity_cfg.gravity_constant * cfg.sun_mass) / distance).sqrt();
         let velocity = pos.cross(DVec3::new(0., 1., 0.)).normalize() * vel_norm;
 
@@ -190,11 +203,11 @@ fn setup_system(
         mesh: meshes.add(SphereMeshBuilder::new(1., SphereKind::Ico {
             subdivisions: 4,
         }).build()),
-        density: 100f64,
+        density: 200f64,
 
         sun_mass: 1_000_000_000.,
 
-        distance_range: 8_000.0..8_500.0,
+        distance_range: 6_000.0..8_000.0,
         mass_range: 100.0..10_000.,
 
         max_distance: 10_000.,
@@ -453,7 +466,7 @@ fn particle_merge_system(
 
         let closest_distance_squared = (dp + t * dv).length_squared();
 
-        let contact_distance = (r1 + r2) / 2.;
+        let contact_distance = (r1 + r2) / 10.;
 
         if contact_distance.powi(2) < closest_distance_squared {
             // no collision

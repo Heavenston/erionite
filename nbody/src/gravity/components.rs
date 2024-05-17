@@ -17,6 +17,9 @@ pub struct GravityFieldSample {
     /// Field force at current time step
     pub field_force: DVec3,
     pub closest_attractor: Option<AttractorInfo>,
+    /// Any attractor closer than this distance do not count for the field_force
+    /// (still for closest_attractor)
+    pub min_affect_distance: f64,
 }
 
 #[derive(Component, Debug, Default, Clone)]

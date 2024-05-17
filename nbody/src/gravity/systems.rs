@@ -165,7 +165,9 @@ pub(crate) fn compute_gravity_field_system_no_svo(
                 closest_attractor = Some(info);
             }
 
-            total_force += (diff / distance) * cfg.gravity_constant * force;
+            if distance > victim_sample.min_affect_distance {
+                total_force += (diff / distance) * cfg.gravity_constant * force;
+            }
         }
 
         victim_sample.closest_attractor = closest_attractor;
@@ -255,8 +257,10 @@ fn compute_svo_gravity_field_util(
                         break 'simplified;
                     }
                     
-                    let force = stats.total_mass / distance_to_com_squared;
-                    total_force += (diff_to_com / distance_to_com) * cfg.gravity_constant * force;
+                    if distance_to_com > victim_sample.min_affect_distance {
+                        let force = stats.total_mass / distance_to_com_squared;
+                        total_force += (diff_to_com / distance_to_com) * cfg.gravity_constant * force;
+                    }
 
                     continue 'svo_loop;
                 }
@@ -294,7 +298,9 @@ fn compute_svo_gravity_field_util(
                         victim_sample.closest_attractor = Some(info);
                     }
 
-                    total_force += (diff / distance) * cfg.gravity_constant * force;
+                    if distance > victim_sample.min_affect_distance {
+                        total_force += (diff / distance) * cfg.gravity_constant * force;
+                    }
                 }
             },
             svo::Cell::Packed(_) => unreachable!("No packed cell"),
