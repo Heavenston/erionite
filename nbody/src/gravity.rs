@@ -17,6 +17,7 @@ pub const GRAVITY_SVO_UPDATE_SYSTEM_DURATION: DiagnosticPath =
 /// If set to true, when visiting the svo, cells that contains the current particle
 /// will always be visited
 const FORCE_VISIT_OWN_CELLS: bool = false;
+const SHOULD_CORRECT_STATS_ON_OWN_CELL: bool = false;
 
 const DEFAULT_THETA: f64 = 0.5;
 

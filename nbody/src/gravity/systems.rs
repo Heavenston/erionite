@@ -237,7 +237,7 @@ fn compute_svo_gravity_field_util(
                         if contains_victim && FORCE_VISIT_OWN_CELLS {
                             break 'simplified;
                         }
-                        if contains_victim {
+                        if contains_victim && SHOULD_CORRECT_STATS_ON_OWN_CELL {
                             stats.center_of_mass -=
                                 (victim_pos * victim_mass.mass) / stats.total_mass;
                             stats.total_mass -= victim_mass.mass;
