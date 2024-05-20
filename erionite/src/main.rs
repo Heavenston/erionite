@@ -293,7 +293,7 @@ fn update_debug_text_system(
     let cam_speed = camera.speed;
 
     let mut grav_info = String::new();
-    grav_info += &format!("G: {:.2}", cam_gravity.field_force.length());
+    grav_info += &format!("G: {:.2}", cam_gravity.field_force(0).unwrap_or_default().length());
     grav_info += ", grav_redirect: ";
     grav_info += if camera.gravity_redirect_enabled { "enabled" } else { "disabled" };
     grav_info += "\n";
@@ -408,11 +408,13 @@ fn camera_system(
     let forward = camera_trans.forward();
     let left = camera_trans.left();
 
+    let field_force = camera_gravity.field_force(0).unwrap_or_default();
+
     camera.gravity_redirect_enabled =
         !camera.forced_gravity_toggle &&
-        camera_gravity.field_force.length() > 9.;
+        field_force.length() > 9.;
     if camera.gravity_redirect_enabled {
-        let target_down = camera_gravity.field_force.normalize();
+        let target_down = field_force.normalize();
         let target_down_local = camera_trans.rotation.inverse() * target_down;
         let angle = DVec3::new(
             target_down_local.x,
