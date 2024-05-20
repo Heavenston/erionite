@@ -26,7 +26,7 @@ impl<D: Data> Deref for ArcPtr<D> {
     type Target = Cell<D, ArcPtr<D>>;
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 
@@ -50,6 +50,6 @@ impl<D> OwnedSvoPtr<D> for ArcPtr<D>
     }
 
     fn into_inner(self) -> Cell<D, Self> {
-        Arc::try_unwrap(self.0).unwrap_or_else(|arc| (&*arc).clone())
+        Arc::try_unwrap(self.0).unwrap_or_else(|arc| (*arc).clone())
     }
 }

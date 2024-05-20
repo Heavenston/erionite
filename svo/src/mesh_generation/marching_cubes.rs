@@ -356,6 +356,12 @@ impl Out {
     }
 }
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+struct IndexKey {
+    pos: [OrderedFloat<f32>; 3],
+    color: [OrderedFloat<f32>; 4],
+}
+
 struct Index {
     index: usize,
     count: f32,
@@ -363,7 +369,7 @@ struct Index {
 }
 
 struct State<'a> {
-    indices: HashMap<([OrderedFloat<f32>; 3], [OrderedFloat<f32>; 4]), Index>,
+    indices: HashMap<IndexKey, Index>,
     color: Color,
     normal: Vec3,
     out: &'a mut Out,
@@ -390,10 +396,10 @@ impl<'a> State<'a> {
     pub fn add_vertex(&mut self, pos: DVec3) {
         let pos = pos.as_vec3();
         if self.out.indexed && self.out.smooth {
-            let key = (
-                [pos.x, pos.y, pos.z].map(OrderedFloat),
-                [self.color.r(), self.color.g(), self.color.b(), self.color.a()].map(OrderedFloat)
-            );
+            let key = IndexKey {
+                pos: [pos.x, pos.y, pos.z].map(OrderedFloat),
+                color: [self.color.r(), self.color.g(), self.color.b(), self.color.a()].map(OrderedFloat)
+            };
             let entry = self.indices.entry(key).or_insert_with(|| {
                 let idx = self.out.vertices.len();
                 self.out.normals.push(self.normal);
@@ -483,13 +489,11 @@ const VERTICES: [UVec3; 8] = [
     UVec3::new(1, 1, 1), UVec3::new(0, 1, 1),
 ];
 
-fn run_rec<'a>(
-    state: &mut State<'a>,
-    chunk_path: &CellPath,
+fn run_rec(
+    state: &mut State<'_>,
     root_cell: &svo::TerrainCell,
     root_aabb: &DAabb,
 
-    chunk_aabb: &DAabb,
     cube_size: &DVec3,
 
     path: CellPath,
@@ -531,9 +535,8 @@ fn run_rec<'a>(
     for comp in CellPath::components() {
         run_rec(
             state,
-            chunk_path, root_cell, root_aabb,
+            root_cell, root_aabb,
 
-            chunk_aabb,
             cube_size,
 
             path.clone().with_push(comp),
@@ -556,11 +559,9 @@ pub fn run(
     run_rec(
         &mut State::new(out),
 
-        &chunk,
         root_cell,
         &root_aabb,
 
-        &chunk_aabb,
         &cube_size,
 
         chunk.clone(),

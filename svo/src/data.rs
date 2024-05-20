@@ -53,15 +53,15 @@ pub trait BorrowedMergeableData: Data {
 }
 
 pub trait AggregateData: Data {
-    fn aggregate<'a>(
+    fn aggregate(
         children: [EitherDataRef<Self>; 8]
     ) -> Self::Internal;
 }
 
 impl<D: Data<Internal = ()>> AggregateData for D {
-    fn aggregate<'a>(
+    fn aggregate(
         _d: [EitherDataRef<D>; 8]
-    ) -> () { }
+    ) { }
 }
 
 impl Data for () {

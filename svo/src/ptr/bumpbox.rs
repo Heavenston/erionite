@@ -21,7 +21,7 @@ impl<'a, D: Data> Deref for BumpBoxPtr<'a, D> {
     type Target = Cell<D, BumpBoxPtr<'a, D>>;
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 
@@ -29,6 +29,6 @@ impl<'a, D: Data> SvoPtr<D> for BumpBoxPtr<'a, D> { }
 
 impl<'a, D: Data> MutableSvoPtr<D> for BumpBoxPtr<'a, D> {
     fn make_mut(&mut self) -> &mut Cell<D, Self> {
-        &mut *self.0
+        &mut self.0
     }
 }

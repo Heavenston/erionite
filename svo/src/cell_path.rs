@@ -1,7 +1,7 @@
 use std::iter::FusedIterator;
 
 use arbitrary_int::*;
-use bevy_math::{DVec3, UVec3};
+use bevy_math::UVec3;
 use utils::{ AsVecExt, DAabb, GlamFloat, Vec3Ext };
 
 type CellPathInner = u64;
@@ -42,7 +42,7 @@ impl CellPath {
     #[doc(alias = "depth")]
     #[inline]
     pub const fn len(&self) -> u32 {
-        return self.mark_bit_position() / 3;
+        self.mark_bit_position() / 3
     }
 
     #[doc(alias = "len")]
@@ -98,7 +98,7 @@ impl CellPath {
 
         let val = self.0 & 0b111;
         self.0 >>= 3;
-        return Some(u3::new(val as u8));
+        Some(u3::new(val as u8))
     }
 
     pub fn peek_back(&self) -> Option<u3> {
@@ -129,7 +129,7 @@ impl CellPath {
     
     #[inline]
     pub fn parent(&self) -> Option<Self> {
-        if self.len() == 0
+        if self.is_empty()
         { return None; }
 
         Some(Self(self.0 >> 3))
@@ -190,9 +190,9 @@ impl CellPath {
 
     pub fn neighbor(&self, dx: i8, dy: i8, dz: i8) -> Option<Self> {
         assert!(
-            dx >= -1 && dx <= 1 &&
-            dy >= -1 && dy <= 1 &&
-            dz >= -1 && dz <= 1
+            (-1..=1).contains(&dx) &&
+            (-1..=1).contains(&dy) &&
+            (-1..=1).contains(&dz)
         );
 
         let mut new = self.clone();
@@ -233,7 +233,7 @@ impl CellPath {
     }
 
     /// Iterator over all neighbors of this path, excluding itself
-    pub fn neighbors(self) -> impl Iterator<Item = ((i8, i8, i8), Self)> + DoubleEndedIterator {
+    pub fn neighbors(self) -> impl DoubleEndedIterator<Item = ((i8, i8, i8), Self)> {
         (-1..=1).flat_map(move |x| (-1..=1)
             .flat_map(move |y| (-1..=1)
             .map(move |z| (x, y, z))))
@@ -256,7 +256,7 @@ impl CellPath {
     }
 
     /// Returns an iterator over all paths possible with the given depth
-    pub fn all_iter(depth: u32) -> impl Iterator<Item = Self> + DoubleEndedIterator {
+    pub fn all_iter(depth: u32) -> impl DoubleEndedIterator<Item = Self> {
         let sections = depth * 3;
         (0..(1 << sections)).map(move |i| Self(i | (1 << sections)))
     }
@@ -278,7 +278,7 @@ impl CellPath {
             panic!("Depth higher than capacity");
         }
 
-        Self(index | (1 << depth as CellPathInner * 3))
+        Self(index | (1 << (depth as CellPathInner * 3)))
     }
 
     /// Return a new CellPath with only the first [depth] elements of self
@@ -297,7 +297,7 @@ impl CellPath {
     pub fn reparent(self, depth_to_remove: u32) -> Self {
         assert!(depth_to_remove <= self.len());
         // mask of used-bits for the original path
-        let full_mask = 1 << (self.len() * 3) - 1;
+        let full_mask = 1 << ((self.len() * 3) - 1);
         let new_mask = full_mask >> depth_to_remove;
 
         let new_depth = self.len() * depth_to_remove;
@@ -427,7 +427,7 @@ impl FusedIterator for CellPathIterator {  }
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy_math::dvec3;
+    use bevy_math::{dvec3, DVec3};
     use itertools::Itertools;
 
     #[test]

@@ -19,7 +19,7 @@ impl<'a, D: Data> Deref for RefPtr<'a, D> {
     type Target = Cell<D, RefPtr<'a, D>>;
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        self.0
     }
 }
 

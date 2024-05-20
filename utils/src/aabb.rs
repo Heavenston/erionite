@@ -28,11 +28,11 @@ impl DAabb {
     }
 
     pub fn min(&self) -> DVec3 {
-        return self.position;
+        self.position
     }
 
     pub fn max(&self) -> DVec3 {
-        return self.position + self.size;
+        self.position + self.size
     }
 
     pub fn set_min(&mut self, val: impl Into<DVec3>) {
@@ -69,8 +69,8 @@ impl DAabb {
 
     pub fn fully_contained_in_sphere(self, sphere_origin: DVec3, sphere_radius: f64) -> bool {
         let r2 = sphere_radius.powi(2);
-        return self.translated(-sphere_origin).corners()
-            .into_iter().all(|c| c.length_squared() <= r2);
+        self.translated(-sphere_origin).corners()
+            .into_iter().all(|c| c.length_squared() <= r2)
     }
 
     /// Returns true if the aabb is touching, or is inside the sphere
@@ -108,18 +108,18 @@ impl DAabb {
     }
 }
 
-impl Into<Aabb3d> for DAabb {
-    fn into(self) -> Aabb3d {
+impl From<DAabb> for Aabb3d {
+    fn from(val: DAabb) -> Self {
         Aabb3d {
-            min: self.min().as_vec3(),
-            max: self.max().as_vec3(),
+            min: val.min().as_vec3(),
+            max: val.max().as_vec3(),
         }
     }
 }
 
-impl Into<Aabb> for DAabb {
-    fn into(self) -> Aabb {
-        Aabb::from_min_max(self.min().as_vec3(), self.max().as_vec3())
+impl From<DAabb> for Aabb {
+    fn from(val: DAabb) -> Self {
+        Aabb::from_min_max(val.min().as_vec3(), val.max().as_vec3())
     }
 }
 

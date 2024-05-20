@@ -34,7 +34,7 @@ impl<D: Data> Deref for BoxPtr<D> {
     type Target = Cell<D, BoxPtr<D>>;
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 
@@ -42,7 +42,7 @@ impl<D: Data> SvoPtr<D> for BoxPtr<D> { }
 
 impl<D: Data> MutableSvoPtr<D> for BoxPtr<D> {
     fn make_mut(&mut self) -> &mut Cell<D, Self> {
-        &mut *self.0
+        &mut self.0
     }
 }
 

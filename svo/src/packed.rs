@@ -77,7 +77,7 @@ impl<D> PackedCellLevel<MaybeUninit<D>> {
 }
 
 fn path_index(path: &CellPath) -> usize {
-    return path.index().try_into().unwrap();
+    path.index()
 }
 
 fn level_size(depth: u32) -> u32 {
@@ -110,7 +110,7 @@ impl PackedIndexIterator {
     }
 }
 
-impl<'a> Iterator for PackedIndexIterator {
+impl Iterator for PackedIndexIterator {
     type Item = (usize, CellPath);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -345,7 +345,7 @@ impl<D: Data> PackedCell<D> {
         path.parents().for_each(|parent| self.update_cell(&parent));
     }
 
-    pub fn internal_level<'a>(&'a self, depth: u32) -> PackedCellLevelRef<'a, D::Internal> {
+    pub fn internal_level(&self, depth: u32) -> PackedCellLevelRef<'_, D::Internal> {
         // not debug_assert as this assert optimizes away levels indexing check
         assert!(
             (depth as usize) >= self.levels.len(),
@@ -381,14 +381,11 @@ impl<D: Data> PackedCell<D> {
     pub fn level(&self, depth: u32) -> PackedCellLevelRef<'_, D>
         where D: Data<Internal = D>
     {
-        if depth < self.depth() {
-            self.internal_level(depth)
-        }
-        else if depth == self.depth() {
-            self.leaf_level()
-        }
-        else {
-            panic!("Depth is out of range");
+        use std::cmp::Ordering as Ord;
+        match depth.cmp(&self.depth()) {
+            Ord::Less => self.internal_level(depth),
+            Ord::Equal => self.leaf_level(),
+            Ord::Greater => panic!("Depth is out of range"),
         }
     }
 
@@ -396,46 +393,37 @@ impl<D: Data> PackedCell<D> {
     pub fn level_mut(&mut self, depth: u32) -> PackedCellLevelMut<'_, D>
         where D: Data<Internal = D>
     {
-        if depth < self.depth() {
-            self.internal_level_mut(depth)
-        }
-        else if depth == self.depth() {
-            self.leaf_level_mut()
-        }
-        else {
-            panic!("Depth is out of range");
+        use std::cmp::Ordering as Ord;
+        match depth.cmp(&self.depth()) {
+            Ord::Less => self.internal_level_mut(depth),
+            Ord::Equal => self.leaf_level_mut(),
+            Ord::Greater => panic!("Depth is out of range"),
         }
     }
 
     /// Like using self.internal_level or self.leaf_level but has different
     /// lifetime requirements.
     pub fn get(&self, path: &CellPath) -> EitherDataRef<'_, D> {
-        if path.len() < self.depth() {
-            Either::Left(&self.levels[path.len() as usize].data[path_index(path)])
-        }
-        else if path.len() == self.depth() {
-            Either::Right(&self.leaf_level.data[path_index(path)])
-        }
-        else {
-            panic!("Depth is out of range");
+        use std::cmp::Ordering as Ord;
+        match path.len().cmp(&self.depth()) {
+            Ord::Less => Either::Left(&self.levels[path.len() as usize].data[path_index(path)]),
+            Ord::Equal => Either::Right(&self.leaf_level.data[path_index(path)]),
+            Ord::Greater => panic!("Depth is out of range"),
         }
     }
 
     /// Like using self.internal_level_mut or self.leaf_level_mut but has different
     /// lifetime requirements.
     pub fn get_mut(&mut self, path: &CellPath) -> EitherDataMut<'_, D> {
-        if path.len() < self.depth() {
-            Either::Left(
+        use std::cmp::Ordering as Ord;
+        match path.len().cmp(&self.depth()) {
+            Ord::Less => Either::Left(
                 &mut self.levels[path.len() as usize].data[path_index(path)]
-            )
-        }
-        else if path.len() == self.depth() {
-            Either::Right(
+            ),
+            Ord::Equal => Either::Right(
                 &mut self.leaf_level.data[path_index(path)]
-            )
-        }
-        else {
-            panic!("Depth is out of range");
+            ),
+            Ord::Greater => panic!("Depth is out of range"),
         }
     }
 
@@ -457,7 +445,7 @@ impl<D: Data> PackedCell<D> {
         }
 
         // O(1)
-        let mut levels = VecDeque::from(Vec::from(self.levels));
+        let mut levels = VecDeque::from(self.levels);
 
         let first_level = levels.pop_front().expect("at least one level");
 
@@ -509,16 +497,16 @@ impl<D> Default for PackedCell<D>
     }
 }
 
-impl<D: Data, Ptr: SvoPtr<D>> Into<Cell<D, Ptr>> for PackedCell<D> {
-    fn into(self) -> Cell<D, Ptr> {
-        Cell::Packed(self)
+impl<D: Data, Ptr: SvoPtr<D>> From<PackedCell<D>> for Cell<D, Ptr> {
+    fn from(val: PackedCell<D>) -> Self {
+        Cell::Packed(val)
     }
 }
 
 impl<D: Data> PackedCell<MaybeUninit<D>> {
     pub fn uninit(depth: u32) -> Self {
         let levels = (0..depth)
-            .map(|level| PackedCellLevel::uninit(level))
+            .map(PackedCellLevel::uninit)
             .collect::<Vec<_>>();
 
         Self {
@@ -527,6 +515,8 @@ impl<D: Data> PackedCell<MaybeUninit<D>> {
         }
     }
 
+    /// # Safety
+    /// Same as [PackedCellLevel::assume_init]
     pub unsafe fn assume_init(self) -> PackedCell<D> {
         PackedCell::<D> {
             levels: self.levels.into_iter().map(|level| level.assume_init()).collect(),

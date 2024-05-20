@@ -28,27 +28,23 @@ impl TerrainCellKind {
     }
 
     pub fn empty(&self) -> bool {
-        match self {
-            TerrainCellKind::Invalid => true,
-            TerrainCellKind::Air => true,
-            _ => false,
-        }
+        matches!(self, TerrainCellKind::Invalid | TerrainCellKind::Air)
     }
 }
 
-impl Into<TerrainLeafCell> for TerrainCellKind {
-    fn into(self) -> TerrainLeafCell {
+impl From<TerrainCellKind> for TerrainLeafCell {
+    fn from(val: TerrainCellKind) -> Self {
         LeafCell::new(TerrainCellData {
-            kind: self,
+            kind: val,
             distance: f16::ZERO,
-            empty: self.empty(),
+            empty: val.empty(),
         })
     }
 }
 
-impl Into<TerrainCell> for TerrainCellKind {
-    fn into(self) -> TerrainCell {
-        Into::<TerrainLeafCell>::into(self).into()
+impl From<TerrainCellKind> for TerrainCell {
+    fn from(val: TerrainCellKind) -> Self {
+        Into::<TerrainLeafCell>::into(val).into()
     }
 }
 

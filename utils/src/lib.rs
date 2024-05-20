@@ -136,7 +136,7 @@ impl<T> RangeExt<T> for Range<T> {
         if value > self.end {
             return self.end;
         }
-        return value;
+        value
     }
 
     fn range_map<O>(&self, f: impl Fn(&T) -> O) -> Range<O> {

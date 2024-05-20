@@ -91,9 +91,9 @@ impl<D: Data, Ptr: SvoPtr<D>> InternalCell<D, Ptr> {
     }
 }
 
-impl<D: Data, Ptr: SvoPtr<D>> Into<Cell<D, Ptr>> for InternalCell<D, Ptr> {
-    fn into(self) -> Cell<D, Ptr> {
-        Cell::Internal(self)
+impl<D: Data, Ptr: SvoPtr<D>> From<InternalCell<D, Ptr>> for Cell<D, Ptr> {
+    fn from(val: InternalCell<D, Ptr>) -> Self {
+        Cell::Internal(val)
     }
 }
 
@@ -108,9 +108,9 @@ impl<D: Data> LeafCell<D> {
     }
 }
 
-impl<D: Data, Ptr: SvoPtr<D>> Into<Cell<D, Ptr>> for LeafCell<D> {
-    fn into(self) -> Cell<D, Ptr> {
-        Cell::Leaf(self)
+impl<D: Data, Ptr: SvoPtr<D>> From<LeafCell<D>> for Cell<D, Ptr> {
+    fn from(val: LeafCell<D>) -> Self {
+        Cell::Leaf(val)
     }
 }
 
@@ -485,7 +485,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
               Ptr: MutableSvoPtr<D>,
     {
         utils::replace_with(self, |cell| pref(&path, cell));
-        self.iter_children_mut().zip(CellPath::components().into_iter())
+        self.iter_children_mut().zip(CellPath::components())
             .for_each(|(child, comp)| {
                 child.auto_replace_with(path.clone().with_push(comp), pref, suff);
             });
@@ -653,7 +653,7 @@ impl<D: Data, Ptr: SvoPtr<D>> Cell<D, Ptr> {
     }
 
     pub fn map_all<F>(&mut self, update: &mut F)
-        where F: FnMut(EitherDataMut<D>) -> (),
+        where F: FnMut(EitherDataMut<D>),
               Ptr: MutableSvoPtr<D>,
     {
         match self {
@@ -840,16 +840,13 @@ impl<'a, D: Data, Ptr: SvoPtr<D>> Iterator for SvoIterator<'a, D, Ptr> {
                     };
                     return Some(SvoIterItem {
                         path: path.extended(&child_path),
-                        data: &p.leaf_level().get(&child_path),
+                        data: p.leaf_level().get(&child_path),
                     });
                 },
                 None => (),
             }
 
-            let Some((last_path, last_cell, child_i)) = self.cell.last_mut()
-            else {
-                return None;
-            };
+            let (last_path, last_cell, child_i) = self.cell.last_mut()?;
 
             let child = last_cell.get_child(*child_i);
             let child_path = last_path.clone().with_push(*child_i);
