@@ -31,6 +31,7 @@ pub(crate) fn propagate_start_end_system(
 
 /// Propagate normal transforms for entities without any transform64
 /// This is to make ui nodes still work
+#[allow(clippy::type_complexity)]
 pub fn propagate_transforms_system(
     mut root_query: Query<(
         Option<&Children>, &Transform, &mut GlobalTransform
@@ -130,7 +131,7 @@ pub fn update_on_floating_origin_system(
         new.set_translation(DVec3::ZERO);
         let new = new.as_32();
         if new != *floating_origin_bevy_trans {
-            *floating_origin_bevy_trans = new.into();
+            *floating_origin_bevy_trans = new;
         }
     }
 
