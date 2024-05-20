@@ -4,6 +4,7 @@ use rapier::{dynamics::{RigidBodyActivation, RigidBodyBuilder, RigidBodyType}, n
 
 use crate::*;
 
+#[allow(clippy::type_complexity)]
 pub fn rigid_body_init_system(
     mut commands: Commands,
     mut context: ResMut<RapierContext>,
@@ -59,6 +60,7 @@ pub fn rigid_body_init_system(
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub fn rigid_body_remove_system(
     mut commands: Commands,
     mut context: ResMut<RapierContext>,

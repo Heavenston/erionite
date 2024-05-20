@@ -4,6 +4,7 @@ use rapier::geometry::{ColliderBuilder, ColliderMassProps};
 
 use crate::*;
 
+#[allow(clippy::type_complexity)]
 pub fn collider_init_system(
     mut commands: Commands,
     mut context: ResMut<RapierContext>,
@@ -53,6 +54,7 @@ pub fn collider_init_system(
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub fn collider_remove_system(
     mut commands: Commands,
     mut context: ResMut<RapierContext>,

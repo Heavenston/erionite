@@ -7,6 +7,8 @@ use rapier::{
     pipeline::QueryFilterFlags,
 };
 
+type QueryPredicate<'a> = &'a dyn Fn(Entity, &Collider) -> bool;
+
 /// See [rapier::pipeline::QueryFilter]
 #[derive(Copy, Clone, Default)]
 pub struct QueryFilter<'a> {
@@ -14,7 +16,7 @@ pub struct QueryFilter<'a> {
     pub groups: Option<InteractionGroups>,
     pub exclude_collider: Option<ColliderHandle>,
     pub exclude_rigid_body: Option<RigidBodyHandle>,
-    pub predicate: Option<&'a dyn Fn(Entity, &Collider) -> bool>,
+    pub predicate: Option<QueryPredicate<'a>>,
 }
 
 impl<'a> QueryFilter<'a> {

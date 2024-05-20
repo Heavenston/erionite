@@ -10,7 +10,7 @@ pub fn physics_step_system(
     cfg: Option<Res<RapierConfig>>,
 ) {
     let default_cfg = RapierConfig::default();
-    let cfg = cfg.as_ref().map(|res| &**res).unwrap_or(&default_cfg);
+    let cfg = cfg.as_deref().unwrap_or(&default_cfg);
 
     let params = IntegrationParameters {
         // Other sytems like the character_controller also need delta time,
@@ -43,6 +43,7 @@ pub fn physics_step_system(
     );
 }
 
+#[allow(clippy::type_complexity)]
 pub fn physics_rapier2bevy_sync_system(
     mut context: ResMut<RapierContext>,
 
@@ -71,7 +72,7 @@ pub fn physics_rapier2bevy_sync_system(
 
         let parent_trans = parent_comp
             .and_then(|parent| globals_transes_query.get(parent.get()).ok())
-            .map(|&trans| trans)
+            .copied()
             .unwrap_or_default();
 
         let Ok(mut global_trans_comp) = globals_transes_query.get_mut(entity)

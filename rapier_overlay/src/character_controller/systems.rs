@@ -48,9 +48,9 @@ pub fn characher_controllers_physics_step_system(
 
         let moved = rapier_controller.move_shape(
             dt,
-            &rigid_body_set,
-            &collider_set,
-            &query_pipeline,
+            rigid_body_set,
+            collider_set,
+            query_pipeline,
             collider.shape(),
             collider.position(),
             next_translation.next_translation.to_rapier(),
