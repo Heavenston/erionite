@@ -39,9 +39,8 @@ fn main() {
             doprec::DoprecPlugin::default(),
             nbody::NBodyPlugin {
                 enable_svo: true,
-                ..nbody::NBodyPlugin::default()
             },
-            orbit_camera::OrbitCameraPlugin::default(),
+            orbit_camera::OrbitCameraPlugin,
         ))
 
         .register_diagnostic(
@@ -53,6 +52,7 @@ fn main() {
         .add_systems(Update, (
             update_particles_colors.run_if(|| false),
             update_debug_text_system,
+            input_update_system,
         ))
         .add_systems(FixedUpdate, (
             particle_merge_system,
@@ -183,7 +183,7 @@ fn spawn_particles(
             .spawn(ParticleBundle {
                 velocity: ParticleVelocity { velocity },
                 ..ParticleBundle::new(
-                    &cfg, meshes, materials,
+                    cfg, meshes, materials,
                     mass, pos,
                     None,
                 )
@@ -221,14 +221,14 @@ fn setup_system(
     
     commands
         .spawn(ParticleBundle::new(
-            &cfg, &mut *meshes, &mut *materials,
+            &cfg, &mut meshes, &mut materials,
             cfg.sun_mass, DVec3::ZERO,
             Some(1_000f64),
         ));
 
     spawn_particles(
-        &cfg, &*gravity_cfg, commands.reborrow(),
-        &mut *materials, &mut *meshes, 1_000,
+        &cfg, &gravity_cfg, commands.reborrow(),
+        &mut materials, &mut meshes, 1_000,
     );
 
     // let mass = 1_000f64;
@@ -294,21 +294,51 @@ fn setup_system(
     }).set_parent(root_uinode);
 }
 
-fn update_debug_text_system(
+fn input_update_system(
     mut commands: Commands,
 
-    diagnostics: Res<DiagnosticsStore>,
     mut cfg: ResMut<ParticleConfig>,
     mut gravity_cfg: ResMut<nbody::GravityConfig>,
-    gravity_svo_ctx: Res<nbody::GravitySvoContext>,
+
+    kb_input: Res<ButtonInput<KeyCode>>,
 
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+) {
+    if kb_input.just_pressed(KeyCode::KeyS) {
+        gravity_cfg.enabled_svo = !gravity_cfg.enabled_svo;
+    }
+
+    let theta_step = 0.05;
+    if kb_input.just_pressed(KeyCode::NumpadAdd) {
+        gravity_cfg.svo_skip_threshold += theta_step;
+    }
+    if kb_input.just_pressed(KeyCode::NumpadSubtract) {
+        gravity_cfg.svo_skip_threshold -= theta_step;
+        if gravity_cfg.svo_skip_threshold < 0. {
+            gravity_cfg.svo_skip_threshold = 0.;
+        }
+    }
+
+    if kb_input.just_pressed(KeyCode::KeyP) {
+        spawn_particles(
+            &cfg, &gravity_cfg, commands.reborrow(),
+            &mut materials, &mut meshes, 500,
+        );
+    }
+    if kb_input.just_pressed(KeyCode::KeyC) {
+        cfg.enable_collision_detection = !cfg.enable_collision_detection;
+    }
+}
+
+fn update_debug_text_system(
+    diagnostics: Res<DiagnosticsStore>,
+    cfg: Res<ParticleConfig>,
+    gravity_cfg: Res<nbody::GravityConfig>,
+    gravity_svo_ctx: Res<nbody::GravitySvoContext>,
 
     cam_query: Query<(&Transform64, &orbit_camera::OrbitCameraComp)>,
     particles_query: Query<&ParticleVelocity, With<Particle>>,
-
-    kb_input: Res<ButtonInput<KeyCode>>,
 
     mut debug_text: Query<&mut Text, With<DebugTextComp>>,
 ) {
@@ -338,7 +368,7 @@ fn update_debug_text_system(
     let collision_info = if cfg.enable_collision_detection {
         format!("{collision_compute_duration:.3} ms")
     } else {
-        format!("disabled")
+        "disabled".to_string()
     };
 
     let cam_pos = cam_transform.translation;
@@ -351,29 +381,6 @@ fn update_debug_text_system(
     } else {
         "disabled"
     };
-
-    if kb_input.just_pressed(KeyCode::KeyS) {
-        gravity_cfg.enabled_svo = !gravity_cfg.enabled_svo;
-    }
-    let theta_step = 0.05;
-    if kb_input.just_pressed(KeyCode::NumpadAdd) {
-        gravity_cfg.svo_skip_threshold += theta_step;
-    }
-    if kb_input.just_pressed(KeyCode::NumpadSubtract) {
-        gravity_cfg.svo_skip_threshold -= theta_step;
-        if gravity_cfg.svo_skip_threshold < 0. {
-            gravity_cfg.svo_skip_threshold = 0.;
-        }
-    }
-    if kb_input.just_pressed(KeyCode::KeyP) {
-        spawn_particles(
-            &cfg, &*gravity_cfg, commands.reborrow(),
-            &mut *materials, &mut *meshes, 500,
-        );
-    }
-    if kb_input.just_pressed(KeyCode::KeyC) {
-        cfg.enable_collision_detection = !cfg.enable_collision_detection;
-    }
 
     let svo_depth = gravity_svo_ctx.depth();
     let svo_max_depth = gravity_svo_ctx.max_depth();
@@ -390,7 +397,7 @@ fn update_debug_text_system(
     - Collision detection: {collision_info} (use 'c' to toggle)\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
     Particles: count {particle_count} (press 'p' to spawn more),\n   total energy: {energy:.2}\n\
-    Svo: {svo_state} (press 's' to toggle), depth: {svo_depth}/{svo_max_depth}, theta: {svo_theta:.2} (+/- {theta_step})\n\
+    Svo: {svo_state} (press 's' to toggle), depth: {svo_depth}/{svo_max_depth}, theta: {svo_theta:.2} (+/- 0.05)\n\
     ");
 }
 
@@ -502,7 +509,7 @@ fn particle_merge_system(
 
         commands.spawn(ParticleBundle {
             velocity: ParticleVelocity { velocity: v3 },
-            ..ParticleBundle::new(&cfg, &mut *meshes, &mut *materials, m3, p3, None)
+            ..ParticleBundle::new(&cfg, &mut meshes, &mut materials, m3, p3, None)
         });
     }
 
