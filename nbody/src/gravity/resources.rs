@@ -15,6 +15,9 @@ pub struct GravityConfig {
     /// 0. means the svo is fully traversed (which is slower than disabling the svo)
     #[derivative(Default(value = "DEFAULT_THETA"))]
     pub svo_skip_threshold: f64,
+    /// The amount of old samples kept in `GravityFieldSample`
+    #[derivative(Default(value = "1"))]
+    pub gravity_field_sample_backlog_count: usize,
 }
 
 #[ouroboros::self_referencing]

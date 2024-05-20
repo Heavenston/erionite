@@ -1,4 +1,5 @@
 use bevy::{math::DVec3, prelude::*};
+use utils::SmallVec;
 
 #[derive(Component, Default, Debug, Clone, Copy, PartialEq)]
 pub struct Massive {
@@ -9,17 +10,48 @@ pub struct Massive {
 /// total gravital force of all Attractors on its position.
 ///
 /// Actual gravity force applied on body should be field_force * body_mass
-#[derive(getset::CopyGetters, Component, Debug, Default, PartialEq, Clone, Copy)]
-#[getset(get_copy = "pub")]
+#[derive(getset::Getters, Component, Debug, Default, PartialEq, Clone)]
+#[getset(get = "pub")]
 pub struct GravityFieldSample {
-    /// Field force at previous time step
-    pub previous_field_force: DVec3,
-    /// Field force at current time step
-    pub field_force: DVec3,
-    pub closest_attractor: Option<AttractorInfo>,
+    /// List of samples of the field force were the last one is the latest one
+    /// the second-to-last one is the previous one etc... up to the limit set
+    /// in the [GravityConfig]
+    field_forces: SmallVec<[DVec3; 1]>,
+    pub(crate) closest_attractor: Option<AttractorInfo>,
     /// Any attractor closer than this distance do not count for the field_force
     /// (still for closest_attractor)
+    #[getset(skip)]
     pub min_affect_distance: f64,
+}
+
+impl GravityFieldSample {
+    /// Sets [Self::min_affect_distance]
+    pub fn with_min_affect_distance(self, value: f64) -> Self {
+        Self {
+            min_affect_distance: value,
+            ..self
+        }
+    }
+
+    pub(crate) fn new_field_force(&mut self, force: DVec3, count_limit: usize) {
+        // Most of the time only one force will be removed so no perf problem
+        // can arise from this not 'bulk' removing them
+        while self.field_forces.len()+1 > count_limit {
+            self.field_forces.remove(0);
+        }
+        self.field_forces.push(force);
+    }
+
+    /// Returns the nth latest computed force
+    /// So 0 is the latest and 1 the previous one
+    pub fn field_force(&self, go_back: usize) -> Option<DVec3> {
+        if go_back >= self.field_forces.len() {
+            None
+        }
+        else {
+            Some(self.field_forces[self.field_forces.len() - go_back - 1])
+        }
+    }
 }
 
 #[derive(Component, Debug, Default, Clone)]

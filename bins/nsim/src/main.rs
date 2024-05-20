@@ -5,7 +5,13 @@ mod orbit_camera;
 use std::{ops::Range, time::Instant};
 
 use bevy::{
-    core::TaskPoolThreadAssignmentPolicy, diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic}, math::{DQuat, DVec3}, prelude::*, render::mesh::{SphereKind, SphereMeshBuilder}, tasks::available_parallelism, utils::HashSet
+    core::TaskPoolThreadAssignmentPolicy,
+    diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin, RegisterDiagnostic},
+    math::DVec3,
+    prelude::*,
+    render::mesh::{SphereKind, SphereMeshBuilder},
+    tasks::available_parallelism,
+    utils::HashSet,
 };
 use doprec::{FloatingOrigin, Transform64, Transform64Bundle};
 use rand::prelude::*;
@@ -37,9 +43,7 @@ fn main() {
                 .disable::<bevy::transform::TransformPlugin>()
                 .disable::<bevy::log::LogPlugin>(),
             doprec::DoprecPlugin::default(),
-            nbody::NBodyPlugin {
-                enable_svo: true,
-            },
+            nbody::NBodyPlugin,
             orbit_camera::OrbitCameraPlugin,
         ))
 
@@ -61,6 +65,11 @@ fn main() {
         ).after(nbody::GravitySystems))
 
         .insert_resource(Time::<Fixed>::from_hz(60.0))
+        .insert_resource(nbody::GravityConfig {
+            enabled_svo: true,
+            gravity_field_sample_backlog_count: 2,
+            ..default()
+        })
         
         .run();
 }
@@ -137,10 +146,8 @@ impl ParticleBundle {
             material,
             particle: Particle { radius },
             velocity: default(),
-            gravity_field_sample: nbody::GravityFieldSample {
-                min_affect_distance: radius / 2.,
-                ..default()
-            },
+            gravity_field_sample: nbody::GravityFieldSample::default()
+                .with_min_affect_distance(radius / 2.),
             massive: nbody::Massive { mass },
             attracted: default(),
             attractor: default(),
@@ -168,14 +175,18 @@ fn spawn_particles(
         (cfg.distance_range.start + cfg.distance_range.end) / 2.,
         ((cfg.distance_range.end - cfg.distance_range.start).powi(2) / 12.).sqrt(),
     ).unwrap();
+    let heigth_distribution = rand_distr::Normal::new(
+        0.,
+        10.,
+    ).unwrap();
 
     for _ in 0..count {
         let distance = rng.sample(distance_distribution);
         let angle = rng.gen_range(-std::f64::consts::PI..std::f64::consts::PI);
         let mass = rng.sample(mass_distributions);
 
-        let mut pos = DQuat::from_rotation_y(angle) * DVec3::new(0., 0., 1.) * distance;
-        pos.y += rng.gen_range(-1.0..1.0);
+        let mut pos = DVec3::new(angle.cos(), 0., angle.sin()) * distance;
+        pos.y += rng.sample(heigth_distribution);
         let vel_norm = ((gravity_cfg.gravity_constant * cfg.sun_mass) / distance).sqrt();
         let velocity = pos.cross(DVec3::new(0., 1., 0.)).normalize() * vel_norm;
 
@@ -338,7 +349,7 @@ fn update_debug_text_system(
     gravity_svo_ctx: Res<nbody::GravitySvoContext>,
 
     cam_query: Query<(&Transform64, &orbit_camera::OrbitCameraComp)>,
-    particles_query: Query<&ParticleVelocity, With<Particle>>,
+    particles_query: Query<(&nbody::Massive, &ParticleVelocity), With<Particle>>,
 
     mut debug_text: Query<&mut Text, With<DebugTextComp>>,
 ) {
@@ -386,7 +397,7 @@ fn update_debug_text_system(
     let svo_max_depth = gravity_svo_ctx.max_depth();
     let svo_theta = gravity_cfg.svo_skip_threshold;
 
-    let energy = particles_query.iter().map(|v| v.velocity.length()).sum::<f64>();
+    let energy = particles_query.iter().map(|(m, v)| m.mass * v.velocity.length()).sum::<f64>();
 
     let mut debug_text = debug_text.single_mut();
     debug_text.sections[0].value = format!("\
@@ -449,7 +460,7 @@ fn particle_merge_system(
     for (
         entity, transform, velocity_comp, sample_comp, massive_comp, particle_comp,
     ) in &particle_query {
-        let Some(nbody::AttractorInfo {
+        let &Some(nbody::AttractorInfo {
             entity: closest_entity, ..
         }) = sample_comp.closest_attractor()
         else { continue; };
@@ -541,13 +552,21 @@ fn position_integration_system(
     particle_query.par_iter_mut().for_each(|(
         sample, mut velocity_comp, mut transform,
     )| {
+        if sample.field_forces().len() < 2 {
+            return;
+        }
+
         // leapfrog integration (i hope?)
         let dt = time.delta_seconds_f64();
         let v = velocity_comp.velocity;
         let p = transform.translation;
-        let a = sample.previous_field_force;
-        let na = sample.field_force;
+        let a = sample.field_force(1).expect("checked");
+        let na = sample.field_force(0).expect("checked");
 
+        // let half_dt = dt / 2.;
+        // let half_nv = v + a * half_dt;
+        // let np      = p + half_nv * dt;
+        // let nv      = half_nv + na * half_dt;
         let np = p + v * dt + 0.5 * a * dt.powi(2);
         let nv = v + 0.5 * ( a + na ) * dt;
 

@@ -171,8 +171,9 @@ pub(crate) fn compute_gravity_field_system_no_svo(
         }
 
         victim_sample.closest_attractor = closest_attractor;
-        victim_sample.previous_field_force = victim_sample.field_force;
-        victim_sample.field_force = total_force;
+        victim_sample.new_field_force(
+            total_force, cfg.gravity_field_sample_backlog_count
+        );
     });
 
     diagnostics.add_measurement(
@@ -306,8 +307,10 @@ fn compute_svo_gravity_field_util(
         }
     }
 
-    victim_sample.previous_field_force = victim_sample.field_force;
-    victim_sample.field_force = total_force;
+    victim_sample.new_field_force(
+        total_force, 
+        cfg.gravity_field_sample_backlog_count,
+    );
 }
 
 #[allow(clippy::type_complexity)]
@@ -359,6 +362,6 @@ pub(crate) fn apply_gravity_to_attracted_rigid_bodies_system(
     ), With<Attracted>>,
 ) {
     for (mass, gravity_sample, mut external_forces) in &mut victims {
-        external_forces.force = gravity_sample.field_force * mass.mass;
+        external_forces.force = gravity_sample.field_force(0).unwrap_or_default() * mass.mass;
     }
 }

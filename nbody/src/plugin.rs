@@ -2,9 +2,7 @@ use crate::*;
 use bevy::{diagnostic::{Diagnostic, RegisterDiagnostic}, prelude::*};
 
 #[derive(Default)]
-pub struct NBodyPlugin {
-    pub enable_svo: bool,
-}
+pub struct NBodyPlugin;
 
 impl Plugin for NBodyPlugin {
     fn build(&self, app: &mut App) {
@@ -27,10 +25,7 @@ impl Plugin for NBodyPlugin {
                 .with_suffix(" ms")
         );
  
-        app.insert_resource(GravityConfig {
-            enabled_svo: self.enable_svo,
-            ..default()
-        });
         app.init_resource::<GravitySvoContext>();
+        app.init_resource::<GravityConfig>();
     }
 }
