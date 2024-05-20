@@ -1,6 +1,8 @@
 use std::{any::Any, ops::Deref, sync::{atomic::{self, AtomicBool, AtomicU32}, Arc, Mutex, MutexGuard}};
 use atomic::Ordering::Relaxed;
 
+type ThenCallback<T> = Box<dyn FnOnce(&T) + Send + Sync + 'static>;
+
 #[derive(derivative::Derivative)]
 #[derivative(Debug, Default(bound = ""))]
 struct LockedTaskInner<T> {
@@ -9,7 +11,7 @@ struct LockedTaskInner<T> {
     parents: Vec<Box<dyn Any + Send + Sync + 'static>>,
 
     #[derivative(Debug="ignore")]
-    thens: Vec<Box<dyn FnOnce(&T) + Send + Sync + 'static>>,
+    thens: Vec<ThenCallback<T>>,
     out: Option<T>,
 }
 
@@ -50,7 +52,7 @@ impl<T> TaskShared<T> {
         self.inner.lock().unwrap().thens.push(Box::new(then));
     }
 
-    pub fn peek<'a>(&'a self) -> Option<impl Deref<Target = T> + 'a> {
+    pub fn peek(&self) -> Option<impl Deref<Target = T> + '_> {
         struct InnerRef<'a, T> {
             guard: MutexGuard<'a, LockedTaskInner<T>>,
         }
@@ -59,14 +61,12 @@ impl<T> TaskShared<T> {
             type Target = T;
 
             fn deref(&self) -> &Self::Target {
-                &self.guard.out.as_ref().expect("checked before")
+                self.guard.out.as_ref().expect("checked before")
             }
         }
 
         let guard = self.inner.lock().unwrap();
-        if guard.out.is_none() {
-            return None;
-        }
+        guard.out.as_ref()?;
         Some(InnerRef { guard })
     }
 }
@@ -155,7 +155,7 @@ impl<T> Deref for TaskHandle<T> {
     type Target = TaskShared<T>;
 
     fn deref(&self) -> &Self::Target {
-        &*self.shared
+        &self.shared
     }
 }
 
@@ -164,6 +164,12 @@ impl<T> Deref for TaskHandle<T> {
 #[derive(Debug)]
 pub struct Task<T> {
     shared: Arc<TaskShared<T>>,
+}
+
+impl<T> Default for Task<T> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T> Task<T> {
@@ -239,7 +245,7 @@ impl<T> Deref for Task<T> {
     type Target = TaskShared<T>;
 
     fn deref(&self) -> &Self::Target {
-        &*self.shared
+        &self.shared
     }
 }
 

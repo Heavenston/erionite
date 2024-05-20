@@ -307,6 +307,7 @@ Camera: speed {cam_speed:.3}, position {cam_pos:.3?} \n\
     ");
 }
 
+#[allow(clippy::too_many_arguments)]
 fn camera_system(
     mut commands: Commands,
 
@@ -382,7 +383,7 @@ fn camera_system(
             RigidBodyBundle::dynamic(),
             nbody::GravityFieldSample::default(),
             nbody::Massive::default(),
-            nbody::Attracted::default(),
+            nbody::Attracted,
         ));
     }
 

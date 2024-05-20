@@ -277,7 +277,7 @@ impl<G: Generator + 'static> super::SvoProvider for GeneratorSvoProvider<G> {
         subdivs: u32,
     ) -> Task<Arc<svo::TerrainCell>> {
         let isubdivs = i64::from(subdivs);
-        let cell = self.gen_target.follow_internal_path(&path);
+        let cell = self.gen_target.follow_internal_path(path);
         
         if let Some(promise) = &cell.data().into_inner().promise {
             if promise.depth >= isubdivs {

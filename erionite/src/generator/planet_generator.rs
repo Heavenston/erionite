@@ -57,7 +57,7 @@ impl Generator for PlanetGenerator {
         ).set_scale(1. / 100.);
         let special_noise = ScalePoint::new(
             Perlin::new(r.gen())
-        ).set_scale(1. / 1.);
+        ).set_scale(1.);
 
         let special_big_noise = ScalePoint::new(
             Perlin::new(r.gen())

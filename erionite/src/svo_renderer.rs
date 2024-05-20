@@ -13,15 +13,11 @@ use utils::{AabbExt, DAabb};
 use crate::task_runner::{self, OptionTaskExt, Task};
 use crate::svo_provider::SvoProviderComponent;
 
+#[derive(Default)]
 pub struct SvoRendererPlugin {
     
 }
 
-impl Default for SvoRendererPlugin {
-    fn default() -> Self {
-        Self{}
-    }
-}
 
 impl Plugin for SvoRendererPlugin {
     fn build(&self, app: &mut App) {
@@ -46,6 +42,8 @@ pub struct SvoRendererBundle {
     pub svo_provider: SvoProviderComponent,
 }
 
+type NewChunkCallback = Box<dyn FnMut(EntityCommands) + Send + Sync>;
+
 #[derive(derivative::Derivative)]
 #[derivative(Default)]
 pub struct SvoRendererComponentOptions {
@@ -62,7 +60,7 @@ pub struct SvoRendererComponentOptions {
 
     pub root_aabb: DAabb,
 
-    pub on_new_chunk: Option<Box<dyn FnMut(EntityCommands) -> () + Send + Sync>>,
+    pub on_new_chunk: Option<NewChunkCallback>,
 
     #[derivative(Default(value="true"))]
     pub enable_subdivs_update: bool,
@@ -506,10 +504,10 @@ fn chunk_system(
             chunk.mesh_task = Some(task_runner::spawn(move || {
                 let mut out = marching_cubes::Out::new(true, false);
                 marching_cubes::run(
-                    &mut out, chunkpath, &*data, root_aabb, subdivs
+                    &mut out, chunkpath, &data, root_aabb, subdivs
                 );
 
-                if out.vertices.len() == 0 {
+                if out.vertices.is_empty() {
                     return GeneratedData {
                         for_subdivs: subdivs,
                         data: None,
