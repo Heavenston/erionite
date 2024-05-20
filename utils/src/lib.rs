@@ -17,6 +17,7 @@ pub use is_zero_approx::*;
 
 pub use replace_with::replace_with_or_abort as replace_with;
 pub use bimap::BiHashMap;
+pub use smallvec::SmallVec;
 
 use bevy_math::{BVec3, DMat3, DQuat, DVec3, UVec3};
 use std::{mem::{ManuallyDrop, MaybeUninit}, ops::{Add, Range, Sub}};

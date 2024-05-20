@@ -3860,6 +3860,7 @@ dependencies = [
  "log",
  "num-traits",
  "replace_with",
+ "smallvec",
 ]
 
 [[package]]
