@@ -346,24 +346,24 @@ fn update_debug_text_system(
 
     let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS)
         .and_then(|diag| diag.smoothed())
-        .unwrap_or(0.);
+        .unwrap_or(f64::NAN);
     let frame_time = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME)
         .and_then(|diag| diag.smoothed())
-        .unwrap_or(0.);
+        .unwrap_or(f64::NAN);
 
     let transform_propagation_duration = diagnostics.get(&doprec::TRANSFORM_SYSTEMS_DURATION_DIAG)
         .and_then(|diag| diag.smoothed())
-        .unwrap_or(0.);
+        .unwrap_or(f64::NAN);
 
     let grav_compute_duration = diagnostics.get(&nbody::GRAVITY_COMPUTE_SYSTEM_DURATION)
         .and_then(|diag| diag.smoothed())
-        .unwrap_or(0.);
+        .unwrap_or(f64::NAN);
     let svo_update_duration = diagnostics.get(&nbody::GRAVITY_SVO_UPDATE_SYSTEM_DURATION)
         .and_then(|diag| diag.smoothed())
-        .unwrap_or(0.);
+        .unwrap_or(f64::NAN);
     let collision_compute_duration = diagnostics.get(&COLLISION_DIAG)
         .and_then(|diag| diag.smoothed())
-        .unwrap_or(0.);
+        .unwrap_or(f64::NAN);
 
     let collision_info = if cfg.enable_collision_detection {
         format!("{collision_compute_duration:.3} ms")
@@ -516,7 +516,7 @@ fn particle_merge_system(
     diagnostics.add_measurement(&COLLISION_DIAG, || start.elapsed().as_millis_f64())
 }
 
-// destroy particles if the go to far
+/// destroy particles if they go to far
 fn particle_destroy_system(
     mut commands: Commands,
 
