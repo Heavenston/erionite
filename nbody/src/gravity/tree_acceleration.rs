@@ -86,7 +86,7 @@ impl svo::SplittableData for SvoData {
 
     fn split(self) -> (Self::Internal, [Self; 8]) {
         std::thread_local! {
-            static TARGET_VEC: RefCell<Vec<u3>> = RefCell::new(Vec::new());
+            static TARGET_VEC: RefCell<Vec<u3>> = const { RefCell::new(Vec::new()) };
         }
 
         let mut children = svo::CellPath::components().map(|comp| SvoData {
@@ -131,7 +131,7 @@ impl svo::SplittableData for SvoData {
         });
 
         let internal = SvoData::aggregate(
-            children.each_ref().map(|leaf| Either::Right(leaf))
+            children.each_ref().map(Either::Right)
         );
 
         (internal, children)

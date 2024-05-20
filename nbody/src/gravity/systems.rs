@@ -106,7 +106,7 @@ pub(crate) fn update_svo_system(
             }
         }
 
-        return root_cell;
+        root_cell
     });
 
     diagnostics.add_measurement(
@@ -184,7 +184,6 @@ pub(crate) fn compute_gravity_field_system_no_svo(
 /// Does the actual svo traversal for a given victim
 fn compute_svo_gravity_field_util(
     cfg: &GravityConfig,
-    _root_aabb: DAabb,
     root_cell: &svo::BumpCell<'_, SvoData>,
     max_depth: u32,
 
@@ -311,6 +310,7 @@ fn compute_svo_gravity_field_util(
     victim_sample.field_force = total_force;
 }
 
+#[allow(clippy::type_complexity)]
 pub(crate) fn compute_gravity_field_system_yes_svo(
     mut diagnostics: Diagnostics,
     cfg: Res<GravityConfig>,
@@ -326,7 +326,6 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
     }
     let start = Instant::now();
 
-    let root_aabb = svo_ctx.root_aabb;
     let max_depth = svo_ctx.max_depth;
     svo_ctx.alloc.with_root_cell(|root_cell| {
         let Some(root_cell) = root_cell
@@ -336,7 +335,7 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
             victim_attractor_bundle
         )| {
             compute_svo_gravity_field_util(
-                &*cfg, root_aabb, root_cell,
+                &cfg, root_cell,
                 max_depth,
                 victim_entity,
                 victim_pos,
