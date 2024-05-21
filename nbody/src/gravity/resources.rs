@@ -10,6 +10,9 @@ pub struct GravityConfig {
     pub gravity_constant: f64,
     #[derivative(Default(value = "true"))]
     pub enabled_svo: bool,
+    /// Enable automatically making some entities have slower timesteps
+    #[derivative(Default(value = "true"))]
+    pub managed_varying_timesteps: bool,
     /// The higher this value the faster the compute but the more imprecise 
     /// it will get.
     /// 0. means the svo is fully traversed (which is slower than disabling the svo)

@@ -120,16 +120,32 @@ pub(crate) fn compute_gravity_field_system_no_svo(
     cfg: Res<GravityConfig>,
 
     attractors: Query<(Entity, &GlobalTransform64, &Massive, &Attractor)>,
-    mut victims: Query<(Entity, &GlobalTransform64, &mut GravityFieldSample)>,
+    mut victims: Query<(
+        Entity, &GlobalTransform64, &mut GravityFieldSample,
+        Option<&mut TimeStep>,
+    )>,
+
+    mut update_counter: Local<u32>,
 ) {
     if cfg.enabled_svo {
         return;
     }
     let start = Instant::now();
 
+    *update_counter = update_counter.wrapping_add(1);
+
     victims.par_iter_mut().for_each(|(
-        victim_entity, victim_translation, mut victim_sample
+        victim_entity, victim_translation, mut victim_sample, victim_timestep
     )| {
+        if let Some(mut victim_timestep) = victim_timestep {
+            victim_timestep.offset = victim_entity.index();
+            if (*update_counter + victim_timestep.offset) % victim_timestep.multiplier != 0 {
+                victim_timestep.last_updated = false;
+                // skip timestep for this entity
+                return;
+            }
+            victim_timestep.last_updated = true;
+        }
         let victim_pos = victim_translation.translation();
 
         let mut total_force = DVec3::ZERO;
@@ -320,14 +336,18 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
     svo_ctx: Res<GravitySvoContext>,
 
     mut victims: Query<(
-        Entity, &GlobalTransform64, &mut GravityFieldSample,
+        Entity, &GlobalTransform64, &mut GravityFieldSample, Option<&mut TimeStep>,
         Option<(&Massive, &Attractor)>
     )>,
+
+    mut update_counter: Local<u32>,
 ) {
     if !cfg.enabled_svo {
         return;
     }
     let start = Instant::now();
+
+    *update_counter = update_counter.wrapping_add(1);
 
     let max_depth = svo_ctx.max_depth;
     svo_ctx.alloc.with_root_cell(|root_cell| {
@@ -335,8 +355,18 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
         else { return; };
         victims.par_iter_mut().for_each(|(
             victim_entity, victim_pos, victim_sample,
+            victim_timestep,
             victim_attractor_bundle
         )| {
+            if let Some(mut victim_timestep) = victim_timestep {
+                victim_timestep.offset = victim_entity.index();
+                if (*update_counter + victim_timestep.offset) % victim_timestep.multiplier != 0 {
+                    victim_timestep.last_updated = false;
+                    // skip timestep for this entity
+                    return;
+                }
+                victim_timestep.last_updated = true;
+            }
             compute_svo_gravity_field_util(
                 &cfg, root_cell,
                 max_depth,
@@ -358,10 +388,16 @@ pub(crate) fn compute_gravity_field_system_yes_svo(
 pub(crate) fn apply_gravity_to_attracted_rigid_bodies_system(
     mut victims: Query<(
         &Massive, &GravityFieldSample,
-        &mut RigidBodyExternalForceComp
+        &mut RigidBodyExternalForceComp,
+        Option<&TimeStep>,
     ), With<Attracted>>,
 ) {
-    for (mass, gravity_sample, mut external_forces) in &mut victims {
+    for (mass, gravity_sample, mut external_forces, timestep) in &mut victims {
+        if let Some(timestep) = timestep {
+            if !timestep.last_updated {
+                continue;
+            }
+        }
         external_forces.force = gravity_sample.field_force(0).unwrap_or_default() * mass.mass;
     }
 }

@@ -69,3 +69,18 @@ pub struct AttractorInfo {
 #[derive(getset::CopyGetters, Component, Debug, Default, Clone, Copy)]
 #[getset(get_copy = "pub")]
 pub struct Attracted;
+
+/// Optional component that if added will make the current entity skip timesteps
+#[derive(getset::CopyGetters, Component, Debug, Clone, Copy, derivative::Derivative)]
+#[derivative(Default)]
+#[getset(get_copy = "pub")]
+pub struct TimeStep {
+    /// 1 -> normal time steps
+    /// 2 -> timesteps are twice as long so half of timesteps are skipped
+    #[getset(skip)]
+    #[derivative(Default(value = "1"))]
+    pub multiplier: u32,
+    pub(crate) offset: u32,
+    /// Wether or not the last update didn't skip this entity
+    pub(crate) last_updated: bool,
+}

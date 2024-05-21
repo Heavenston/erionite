@@ -62,6 +62,7 @@ fn main() {
             particle_merge_system,
             particle_destroy_system,
             position_integration_system,
+            timestep_compute_system,
         ).after(nbody::GravitySystems))
 
         .insert_resource(Time::<Fixed>::from_hz(60.0))
@@ -115,6 +116,7 @@ pub struct ParticleBundle {
     massive: nbody::Massive,
     attracted: nbody::Attracted,
     attractor: nbody::Attractor,
+    timestep: nbody::TimeStep,
 }
 
 impl ParticleBundle {
@@ -151,6 +153,7 @@ impl ParticleBundle {
             massive: nbody::Massive { mass },
             attracted: default(),
             attractor: default(),
+            timestep: default(),
         }
     }
 }
@@ -224,7 +227,7 @@ fn setup_system(
         distance_range: 6_000.0..8_000.0,
         mass_range: 100.0..10_000.,
 
-        max_distance: 10_000.,
+        max_distance: 50_000.,
 
         enable_collision_detection: false,
     };
@@ -350,6 +353,7 @@ fn update_debug_text_system(
 
     cam_query: Query<(&Transform64, &orbit_camera::OrbitCameraComp)>,
     particles_query: Query<(&nbody::Massive, &ParticleVelocity), With<Particle>>,
+    timestep_query: Query<&nbody::TimeStep, With<Particle>>,
 
     mut debug_text: Query<&mut Text, With<DebugTextComp>>,
 ) {
@@ -398,6 +402,13 @@ fn update_debug_text_system(
     let svo_theta = gravity_cfg.svo_skip_threshold;
 
     let energy = particles_query.iter().map(|(m, v)| m.mass * v.velocity.length()).sum::<f64>();
+    let average_multiplier = {
+        let (count, sum) = timestep_query.iter()
+            .map(|t| t.multiplier as f64)
+            .fold((0f64, 0f64), |(count, sum), val| (count + 1., sum + val));
+
+        sum / count
+    };
 
     let mut debug_text = debug_text.single_mut();
     debug_text.sections[0].value = format!("\
@@ -407,7 +418,7 @@ fn update_debug_text_system(
     - Gravity compute: {grav_compute_duration:.3} ms\n\
     - Collision detection: {collision_info} (use 'c' to toggle)\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
-    Particles: count {particle_count} (press 'p' to spawn more),\n   total energy: {energy:.2}\n\
+    Particles: count {particle_count} (press 'p' to spawn more),\n   total energy: {energy:.2}\n   average multiplier: {average_multiplier:.2}\n\
     Svo: {svo_state} (press 's' to toggle), depth: {svo_depth}/{svo_max_depth}, theta: {svo_theta:.2} (+/- 0.05)\n\
     ");
 }
@@ -542,16 +553,47 @@ fn particle_destroy_system(
     }
 }
 
+fn timestep_compute_system(
+    time: Res<Time<Fixed>>,
+
+    mut particle_query: Query<(
+        &mut nbody::TimeStep, &ParticleVelocity, &Particle
+    ), With<Particle>>,
+) {
+    let dt = time.delta_seconds_f64();
+
+    particle_query.par_iter_mut().for_each(|(
+        mut timestep, velocity_comp, particle
+    )| {
+        if !timestep.last_updated() {
+            return;
+        }
+        let vel = velocity_comp.velocity.length();
+
+        let val = 10_000. / vel;
+        // if val > 1. {
+        //     println!("{vel} -> {val}");
+        // }
+        timestep.multiplier = (val.floor() as u32).clamp(1, 10);
+    });
+}
+
 fn position_integration_system(
     mut diagnostics: Diagnostics,
     time: Res<Time<Fixed>>,
 
-    mut particle_query: Query<(&nbody::GravityFieldSample, &mut ParticleVelocity, &mut Transform64), With<Particle>>,
+    mut particle_query: Query<(
+        &nbody::GravityFieldSample, &nbody::TimeStep,
+        &mut ParticleVelocity, &mut Transform64,
+    ), With<Particle>>,
 ) {
     let start = Instant::now();
     particle_query.par_iter_mut().for_each(|(
-        sample, mut velocity_comp, mut transform,
+        sample, timestep, mut velocity_comp, mut transform,
     )| {
+        // if !timestep.last_updated() {
+        //     return;
+        // }
         if sample.field_forces().len() < 2 {
             return;
         }

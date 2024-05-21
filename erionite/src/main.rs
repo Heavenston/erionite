@@ -25,7 +25,7 @@ fn main() {
                 .disable::<bevy::transform::TransformPlugin>()
                 .disable::<bevy::log::LogPlugin>(),
             svo_renderer::SvoRendererPlugin::default(),
-            nbody::NBodyPlugin::default(),
+            nbody::NBodyPlugin,
             DoprecPlugin::default(),
             RapierPlugin::default(),
         ))
