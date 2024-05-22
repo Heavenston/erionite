@@ -3,6 +3,14 @@ use super::*;
 use bevy::{math::DVec3, prelude::*};
 use utils::{DAabb, Vec3Ext};
 
+/// Configures how wether any svo cell is 'opened' or considered as a single cell
+#[derive(Debug, Clone, Copy, derivative::Derivative)]
+#[derivative(Default)]
+pub struct SvoSkipConfig {
+    #[derivative(Default(value = "DEFAULT_THETA"))]
+    pub opening_angle: f64,
+}
+
 #[derive(Resource, derivative::Derivative)]
 #[derivative(Default)]
 pub struct GravityConfig {
@@ -13,11 +21,8 @@ pub struct GravityConfig {
     /// Enable automatically making some entities have slower timesteps
     #[derivative(Default(value = "true"))]
     pub managed_varying_timesteps: bool,
-    /// The higher this value the faster the compute but the more imprecise 
-    /// it will get.
-    /// 0. means the svo is fully traversed (which is slower than disabling the svo)
-    #[derivative(Default(value = "DEFAULT_THETA"))]
-    pub svo_skip_threshold: f64,
+    /// See [SvoSkipConfig]
+    pub svo_skip_config: SvoSkipConfig,
     /// The amount of old samples kept in `GravityFieldSample`
     #[derivative(Default(value = "1"))]
     pub gravity_field_sample_backlog_count: usize,

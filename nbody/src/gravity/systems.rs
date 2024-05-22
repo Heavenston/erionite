@@ -8,7 +8,7 @@ use doprec::GlobalTransform64;
 #[cfg(feature = "rapier")]
 use rapier_overlay::*;
 use svo::SplittableData as _;
-use utils::{DAabb, IsZeroApprox};
+use utils::{AabbExt, DAabb, IsZeroApprox};
 use bumpalo::boxed::Box as BumpBox;
 
 #[derive(SystemSet, Debug, PartialEq, Eq, Default, Hash, Clone, Copy)]
@@ -246,14 +246,18 @@ fn compute_svo_gravity_field_util(
                     continue 'svo_loop;
                 }
 
-                'simplified: {
-                    let mut stats = internal.data;
+                let mut stats = internal.data;
 
+                let diff_to_com = stats.center_of_mass - victim_pos;
+                let distance_to_com_squared = diff_to_com.length_squared();
+                let distance_to_com = distance_to_com_squared.sqrt();
+
+                let should_simplify = 'should_simplify: {
                     if let Some((victim_mass, victim_attractor)) = victim_attractor_bundle {
                         let contains_victim = victim_attractor.last_svo_position.as_ref()
                             .is_some_and(|pos| step.path.is_prefix_of(pos));
                         if contains_victim && FORCE_VISIT_OWN_CELLS {
-                            break 'simplified;
+                            break 'should_simplify false;
                         }
                         if contains_victim && SHOULD_CORRECT_STATS_ON_OWN_CELL {
                             stats.center_of_mass -=
@@ -262,30 +266,37 @@ fn compute_svo_gravity_field_util(
                             stats.count -= 1;
                         }
                     }
+                    let skip_cfg = &cfg.svo_skip_config;
 
-                    let region_width = stats.aabb.size.x;
-                    let diff_to_com = stats.center_of_mass - victim_pos;
-                    let distance_to_com_squared = diff_to_com.length_squared();
-                    let distance_to_com = distance_to_com_squared.sqrt();
-                    let ratio = region_width / distance_to_com;
+                    if stats.count == 1 {
+                        break 'should_simplify true;
+                    }
 
-                    if stats.count != 1 && ratio > cfg.svo_skip_threshold {
-                        break 'simplified;
+                    let r_max = stats.aabb.furthest_point(stats.center_of_mass)
+                        .distance(stats.center_of_mass);
+                    // From "10.1111/j.1365-2966.2007.11427.x"
+                    let factor = 2f64 / 3f64.sqrt();
+                    let r_open = factor * (r_max / skip_cfg.opening_angle);
+
+                    if distance_to_com < r_open {
+                        break 'should_simplify false;
                     }
                     
+                    true
+                };
+                if should_simplify {
                     if distance_to_com > victim_sample.min_affect_distance {
                         let force = stats.total_mass / distance_to_com_squared;
                         total_force += (diff_to_com / distance_to_com) * cfg.gravity_constant * force;
                     }
-
-                    continue 'svo_loop;
                 }
-
-                // With Some(0) each child will be seen
-                cell_stack.push(CellStep {
-                    current_child: Some(u3::new(0)),
-                    ..step
-                });
+                else {
+                    // With current_child: Some(0) each child will be seen
+                    cell_stack.push(CellStep {
+                        current_child: Some(u3::new(0)),
+                        ..step
+                    });
+                }
             },
             svo::Cell::Leaf(l) => {
                 'entity_loop: for entity_repr in &l.data.entities {

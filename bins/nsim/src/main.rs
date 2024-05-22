@@ -325,12 +325,12 @@ fn input_update_system(
 
     let theta_step = 0.05;
     if kb_input.just_pressed(KeyCode::NumpadAdd) {
-        gravity_cfg.svo_skip_threshold += theta_step;
+        gravity_cfg.svo_skip_config.opening_angle += theta_step;
     }
     if kb_input.just_pressed(KeyCode::NumpadSubtract) {
-        gravity_cfg.svo_skip_threshold -= theta_step;
-        if gravity_cfg.svo_skip_threshold < 0. {
-            gravity_cfg.svo_skip_threshold = 0.;
+        gravity_cfg.svo_skip_config.opening_angle -= theta_step;
+        if gravity_cfg.svo_skip_config.opening_angle < 0. {
+            gravity_cfg.svo_skip_config.opening_angle = 0.;
         }
     }
 
@@ -345,6 +345,7 @@ fn input_update_system(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_debug_text_system(
     diagnostics: Res<DiagnosticsStore>,
     cfg: Res<ParticleConfig>,
@@ -399,7 +400,7 @@ fn update_debug_text_system(
 
     let svo_depth = gravity_svo_ctx.depth();
     let svo_max_depth = gravity_svo_ctx.max_depth();
-    let svo_theta = gravity_cfg.svo_skip_threshold;
+    let svo_theta = gravity_cfg.svo_skip_config.opening_angle;
 
     let energy = particles_query.iter().map(|(m, v)| m.mass * v.velocity.length()).sum::<f64>();
     let average_multiplier = {
