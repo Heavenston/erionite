@@ -102,6 +102,8 @@ pub struct ParticleConfig {
     pub max_distance: f64,
 
     pub enable_collision_detection: bool,
+
+    pub enable_dynamic_timesteps: bool,
 }
 
 #[derive(Bundle, Debug)]
@@ -230,6 +232,7 @@ fn setup_system(
         max_distance: 50_000.,
 
         enable_collision_detection: false,
+        enable_dynamic_timesteps: true,
     };
     commands.insert_resource(cfg.clone());
     
@@ -340,8 +343,13 @@ fn input_update_system(
             &mut materials, &mut meshes, 500,
         );
     }
+
     if kb_input.just_pressed(KeyCode::KeyC) {
         cfg.enable_collision_detection = !cfg.enable_collision_detection;
+    }
+
+    if kb_input.just_pressed(KeyCode::KeyT) {
+        cfg.enable_dynamic_timesteps = !cfg.enable_dynamic_timesteps;
     }
 }
 
@@ -392,6 +400,12 @@ fn update_debug_text_system(
 
     let particle_count = particles_query.iter().count();
 
+    let dynamic_timesteps_state = if cfg.enable_dynamic_timesteps {
+        "enabled"
+    } else {
+        "disabled"
+    };
+
     let svo_state = if gravity_cfg.enabled_svo {
         "enabled"
     } else {
@@ -419,7 +433,10 @@ fn update_debug_text_system(
     - Gravity compute: {grav_compute_duration:.3} ms\n\
     - Collision detection: {collision_info} (use 'c' to toggle)\n\
     Camera: speed {cam_speed:.3}, position {cam_pos:.3?}\n\
-    Particles: count {particle_count} (press 'p' to spawn more),\n   total energy: {energy:.2}\n   average multiplier: {average_multiplier:.2}\n\
+    Particles: count {particle_count} (press 'p' to spawn more),\n\
+    - total energy: {energy:.2}\n\
+    - average timestep mutliplier: {average_multiplier:.2}\n\
+    - dynamic timesteps: {dynamic_timesteps_state} (press 't' to toggle)\n\
     Svo: {svo_state} (press 's' to toggle), depth: {svo_depth}/{svo_max_depth}, theta: {svo_theta:.2} (+/- 0.05)\n\
     ");
 }
@@ -555,16 +572,21 @@ fn particle_destroy_system(
 }
 
 fn timestep_compute_system(
-    time: Res<Time<Fixed>>,
+    cfg: Res<ParticleConfig>,
 
     mut particle_query: Query<(
-        &mut nbody::TimeStep, &ParticleVelocity, &Particle
+        &mut nbody::TimeStep, &ParticleVelocity
     ), With<Particle>>,
 ) {
-    let dt = time.delta_seconds_f64();
+    if !cfg.enable_dynamic_timesteps {
+        particle_query.par_iter_mut().for_each(|(mut timestep, ..)| {
+            timestep.multiplier = 1;
+        });
+        return
+    }
 
     particle_query.par_iter_mut().for_each(|(
-        mut timestep, velocity_comp, particle
+        mut timestep, velocity_comp
     )| {
         if !timestep.last_updated() {
             return;
